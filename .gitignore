@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+artifacts/
+cache/
+out-forge/
+cache-forge/
+typechain-types/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+**/target/
+
+# Environment & secrets — never commit keys
+.env
+.env.*
+!.env.example
+*.key
+key.txt
+
+# Local deployments (testnet/mainnet manifests ARE committed)
+deployments/localhost.json
+
+# Runtime data
+backend/data/*.runtime.json
+backend/data/state/
+backend/data/*.json
+!backend/data/contacts.json
+offchain/reporter/node_modules/
+offchain/**/state/
+*.log
+
+# IDE / OS
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private notes
+idea.md
+
+# Archived Aura media (≈50MB, unused by Bloom; kept on disk only)
+legacy/aura/frontend-app/public/assets/
