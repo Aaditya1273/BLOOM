@@ -30,6 +30,22 @@ export function BloomMark({
   animate?: boolean;
   className?: string;
 }) {
+  if (variant === "color") {
+    // Brand artwork (public/brand/bloom-mark.webp); the SVG paths remain for ink / mono / on-dark renderings.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- tiny static brand asset, sized explicitly
+      <img
+        src="/brand/bloom-mark.webp"
+        alt=""
+        aria-hidden
+        width={Math.round(size * 0.88)}
+        height={size}
+        decoding="async"
+        className={cn("shrink-0 object-contain", animate && "bloom-mark-in", className)}
+        style={{ width: Math.round(size * 0.88), height: size }}
+      />
+    );
+  }
   const f = FILLS[variant];
   return (
     <svg

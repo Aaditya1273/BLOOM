@@ -209,8 +209,9 @@ export function BloomShell({ children }: { children: ReactNode }) {
   const chat = pathname.startsWith("/chat");
   return (
     <MotionConfig reducedMotion="user">
-      {isPublic ? <PublicTopBar welcome={welcome} /> : <AppTopBar />}
-      <main className={cn("mx-auto w-full max-w-[1200px] flex-1", PAGE_X, welcome ? "pt-0" : "pt-8 sm:pt-12")}>{children}</main>
+      {/* the landing page renders its own transparent-over-hero navigation */}
+      {welcome ? null : isPublic ? <PublicTopBar welcome={false} /> : <AppTopBar />}
+      <main className={cn("w-full flex-1", welcome ? "" : cn("mx-auto max-w-[1200px] pt-8 sm:pt-12", PAGE_X))}>{children}</main>
       {!chat && <Footer withTabs={!isPublic} />}
       {!isPublic && <BottomTabs />}
       <Toaster

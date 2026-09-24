@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ── Bloom design tokens ─────────────────────────────────────────────
+/* -- Bloom design tokens ---------------------------------------------
    Components use ONLY these tokens (via the Tailwind names below).
    Light mode is the only theme: warm cream, ink text, pink as the identity accent. */
 :root {
@@ -54,6 +54,7 @@
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-script: var(--font-dancing), "Segoe Script", cursive;
 
   --shadow-sm: var(--bloom-shadow-sm);
   --shadow-md: var(--bloom-shadow-md);
@@ -68,6 +69,14 @@
 }
 
 @layer base {
+  /* Hide the page scrollbar (scrolling still works with wheel, touch, keyboard and trackpad). */
+  html {
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar {
+    display: none;
+  }
+
   * {
     border-color: var(--bloom-border);
   }
@@ -117,7 +126,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Signature motion: a soft-pink blossom on success ──
+/* -- Signature motion: a soft-pink blossom on success --
    Inner bloom fills the button from its centre; a soft ring opens around it. Once, ~480ms. */
 @keyframes bloom-ripple {
   from {
@@ -198,6 +207,60 @@
   animation: bloom-pop-in 260ms var(--bloom-ease);
 }
 
+/* --- Landing page motion (all disabled under prefers-reduced-motion below) --- */
+@keyframes bloom-mark-in {
+  from { opacity: 0; transform: scale(0.6) rotate(-12deg); }
+  to { opacity: 1; transform: none; }
+}
+.bloom-mark-in { animation: bloom-mark-in 700ms var(--bloom-ease) both; }
+
+/* falling petals: each petal sets --x, --drift, --spin, --dur, --delay */
+@keyframes bloom-fall {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); opacity: 0; }
+  8% { opacity: var(--o, 0.9); }
+  90% { opacity: var(--o, 0.9); }
+  100% { transform: translate3d(var(--drift), 110vh, 0) rotate(var(--spin)); opacity: 0; }
+}
+@keyframes bloom-flutter {
+  0%, 100% { transform: rotateY(0deg) scaleX(1); }
+  50% { transform: rotateY(60deg) scaleX(0.7); }
+}
+.bloom-petal-fall {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  animation: bloom-fall var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+.bloom-petal-fall > svg { animation: bloom-flutter calc(var(--dur) / 5) ease-in-out infinite; }
+
+/* branches sway around their attachment point */
+@keyframes bloom-sway {
+  0%, 100% { transform: rotate(var(--sway-from, -1.5deg)); }
+  50% { transform: rotate(var(--sway-to, 2deg)); }
+}
+.bloom-sway { animation: bloom-sway 7s ease-in-out infinite; transform-origin: var(--origin, 0% 0%); }
+
+@keyframes bloom-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+.bloom-float { animation: bloom-float 6s ease-in-out infinite; }
+
+@keyframes bloom-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.bloom-marquee { animation: bloom-marquee 38s linear infinite; }
+.bloom-marquee-wrap:hover .bloom-marquee { animation-play-state: paused; }
+
+@keyframes bloom-scroll-cue {
+  0% { transform: translateY(0); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateY(12px); opacity: 0; }
+}
+.bloom-scroll-cue { animation: bloom-scroll-cue 1.8s var(--bloom-ease) infinite; }
+
 /* Skeleton shimmer is the one repeating motion: it only exists while loading. */
 @keyframes bloom-pulse {
   50% {
@@ -222,5 +285,14 @@
   }
   .bloom-success {
     animation: none;
+  }
+  .bloom-petal-fall,
+  .bloom-scroll-cue {
+    display: none;
+  }
+  .bloom-sway,
+  .bloom-float,
+  .bloom-marquee {
+    animation: none !important;
   }
 }
