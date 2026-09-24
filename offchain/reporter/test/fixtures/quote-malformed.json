@@ -1,0 +1,11 @@
+[
+  {"quotes":[]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":"735.36","ask":"735.38","generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":735.36,"ask":"735.38","isTradingHalt":false,"generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":"-1","ask":"735.38","isTradingHalt":false,"generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":"1e3","ask":"735.38","isTradingHalt":false,"generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":"735.36","ask":"735.38","isTradingHalt":"no","generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[],"bid":"735.36","ask":"735.38","isTradingHalt":false,"generatedAt":"yesterday"}]},
+  {"quotes":[{"tokenSymbol":"QQQ","deployments":[{"contractAddress":"0x1234","chainId":4663}],"bid":"735.36","ask":"735.38","isTradingHalt":false,"generatedAt":"2026-09-24T15:42:01Z"}]},
+  {"code":5,"message":"no whitelisted asset with symbol \"NOPE\"","details":[]}
+]

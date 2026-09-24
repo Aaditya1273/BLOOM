@@ -1,0 +1,4 @@
+{"assets":[
+ {"tokenSymbol":"QQQ","deployments":[{"contractAddress":"0xD5f3879160bc7c32ebb4dC785F8a4F505888de68","chainId":4663}],"currentMultiplier":"1.000700791241405425","pendingMultiplier":"","status":"ASSET_STATUS_ACTIVE"},
+ {"tokenSymbol":"AAPL","deployments":[{"contractAddress":"0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9","chainId":4663}],"currentMultiplier":"1.000566080061092436","pendingMultiplier":"2.001132160122184872","pendingMultiplierEffectiveTime":"2026-09-25T13:30:00Z","status":"ASSET_STATUS_ACTIVE"}
+]}
