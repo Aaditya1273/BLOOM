@@ -1,0 +1,30 @@
+[package]
+name = "stylus-escrow"
+version = "0.1.11"
+edition = "2021"
+
+[dependencies]
+alloy-primitives = "=1.5.7"
+alloy-sol-types = "=1.5.7"
+stylus-sdk = "=0.10.6"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+debug = ["stylus-sdk/debug"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+contract-client-gen = []
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "z"
+
+[patch.crates-io]
+getrandom = { git = "https://github.com/rust-random/getrandom", tag = "v0.2.15" }
+clap_builder = { git = "https://github.com/clap-rs/clap", tag = "v4.5.23" }

@@ -1,0 +1,2 @@
+[build]
+rustflags = ["-C", "target-feature=-multivalue,-mutable-globals,-reference-types,-sign-ext,-bulk-memory,-simd128"]
