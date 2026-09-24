@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+/* ── Bloom design tokens ─────────────────────────────────────────────
+   Components use ONLY these tokens (via the Tailwind names below).
+   Light mode is the only theme: warm cream, ink text, pink as the identity accent. */
+:root {
+  --bloom-cream: #f7f3ec; /* page background */
+  --bloom-ink: #111111; /* text, primary buttons */
+  --bloom-muted: #716c67; /* secondary text (AA on cream + surface) */
+  --bloom-pink: #f3a6b8; /* brand fills + marks, never body text */
+  --bloom-pink-strong: #e9829c; /* emphasis fills, focus halo */
+  --bloom-pink-soft: #fce8ed; /* quiet brand wash */
+  --bloom-surface: #fffcf8; /* elevated cards */
+  --bloom-sunken: #efe9df; /* inset wells, skeletons, tracks */
+  --bloom-success: #668b72; /* state only: icons, dots, large text */
+  --bloom-success-text: #4a6b55; /* state text at small sizes (AA) */
+  --bloom-danger: #c94c4c; /* risk only: icons, dots, large text */
+  --bloom-danger-text: #a63a3a; /* risk text at small sizes (AA) */
+  --bloom-danger-soft: #f8e6e2;
+  --bloom-success-soft: #e8efe8;
+  --bloom-border: rgba(17, 17, 17, 0.08);
+  --bloom-border-strong: rgba(17, 17, 17, 0.16);
+
+  --bloom-shadow-sm: 0 8px 30px rgba(17, 17, 17, 0.05);
+  --bloom-shadow-md: 0 16px 50px rgba(17, 17, 17, 0.07);
+
+  --bloom-radius-card: 20px;
+  --bloom-radius-control: 14px;
+  --bloom-radius-chip: 10px;
+
+  --bloom-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --bloom-duration: 220ms;
+}
+
+@theme inline {
+  /* Only Bloom colors exist; Tailwind's default palette is removed on purpose. */
+  --color-*: initial;
+  --color-cream: var(--bloom-cream);
+  --color-ink: var(--bloom-ink);
+  --color-muted: var(--bloom-muted);
+  --color-pink: var(--bloom-pink);
+  --color-pink-strong: var(--bloom-pink-strong);
+  --color-pink-soft: var(--bloom-pink-soft);
+  --color-surface: var(--bloom-surface);
+  --color-sunken: var(--bloom-sunken);
+  --color-success: var(--bloom-success);
+  --color-success-text: var(--bloom-success-text);
+  --color-success-soft: var(--bloom-success-soft);
+  --color-danger: var(--bloom-danger);
+  --color-danger-text: var(--bloom-danger-text);
+  --color-danger-soft: var(--bloom-danger-soft);
+  --color-line: var(--bloom-border);
+  --color-line-strong: var(--bloom-border-strong);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --shadow-sm: var(--bloom-shadow-sm);
+  --shadow-md: var(--bloom-shadow-md);
+
+  --radius-card: var(--bloom-radius-card);
+  --radius-control: var(--bloom-radius-control);
+  --radius-chip: var(--bloom-radius-chip);
+
+  --ease-bloom: var(--bloom-ease);
+  --default-transition-duration: var(--bloom-duration);
+  --default-transition-timing-function: var(--bloom-ease);
+}
+
+@layer base {
+  * {
+    border-color: var(--bloom-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: clip;
+  }
+  body {
+    background: var(--bloom-cream);
+    color: var(--bloom-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
+  }
+  ::selection {
+    background: var(--bloom-pink-soft);
+  }
+  :focus-visible {
+    outline: 2px solid var(--bloom-ink);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button:not(:disabled),
+  [role="button"],
+  summary {
+    cursor: pointer;
+  }
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Big numbers: tight, tabular. */
+@utility display {
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Signature motion: a soft-pink blossom on success ──
+   Inner bloom fills the button from its centre; a soft ring opens around it. Once, ~480ms. */
+@keyframes bloom-ripple {
+  from {
+    transform: translate(-50%, -50%) scale(0.15);
+    opacity: 0.9;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes bloom-ring {
+  from {
+    box-shadow: 0 0 0 0 rgba(243, 166, 184, 0.7);
+  }
+  to {
+    box-shadow: 0 0 0 14px rgba(243, 166, 184, 0);
+  }
+}
+.bloom-success {
+  overflow: hidden;
+  animation: bloom-ring 480ms var(--bloom-ease) 1;
+}
+.bloom-ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--bloom-pink) 0%, var(--bloom-pink-soft) 40%, transparent 70%);
+  animation: bloom-ripple 480ms var(--bloom-ease) 1 forwards;
+}
+.bloom-success.bg-ink .bloom-ripple {
+  mix-blend-mode: screen;
+}
+
+/* Logo: petals open once on load. */
+@keyframes bloom-petal {
+  from {
+    opacity: 0;
+    transform: scale(0.82) rotate(-6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bloom-logo-animate .bloom-petal {
+  transform-origin: 40% 55%;
+  transform-box: view-box;
+  animation: bloom-petal 520ms var(--bloom-ease) backwards;
+}
+.bloom-logo-animate .bloom-petal:nth-child(2) {
+  animation-delay: 70ms;
+}
+.bloom-logo-animate .bloom-petal:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+/* Dialogs */
+@keyframes bloom-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bloom-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+.bloom-fade[data-state="open"] {
+  animation: bloom-fade-in 200ms var(--bloom-ease);
+}
+.bloom-pop[data-state="open"] {
+  animation: bloom-pop-in 260ms var(--bloom-ease);
+}
+
+/* Skeleton shimmer is the one repeating motion: it only exists while loading. */
+@keyframes bloom-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.bloom-skeleton {
+  animation: bloom-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .bloom-ripple {
+    display: none;
+  }
+  .bloom-success {
+    animation: none;
+  }
+}
