@@ -1,0 +1,52 @@
+{
+  "network": "robinhoodTestnet",
+  "chainId": 46630,
+  "mode": "testnet-mocks",
+  "note": "Robinhood Chain testnet has no official USDG, Stock Tokens or Chainlink feeds. Every asset below is a TESTNET MOCK deployed by scripts/deploy.js.",
+  "explorer": "https://explorer.testnet.chain.robinhood.com",
+  "entryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+  "stable": {
+    "symbol": "USDG",
+    "decimals": 6
+  },
+  "stockTokens": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple (mock Stock Token)",
+      "initialPrice": "212.41"
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA (mock Stock Token)",
+      "initialPrice": "181.20"
+    },
+    {
+      "symbol": "QQQ",
+      "name": "Invesco QQQ (mock Stock Token)",
+      "initialPrice": "571.30"
+    },
+    {
+      "symbol": "SPY",
+      "name": "SPDR S&P 500 (mock Stock Token)",
+      "initialPrice": "646.50"
+    }
+  ],
+  "feedDecimals": 8,
+  "risk": {
+    "heartbeat": 3600,
+    "deviationBps": 500,
+    "maxLtvBps": 6000,
+    "maxReportAge": 3600,
+    "sequencer": {
+      "mode": "mock",
+      "grace": 60,
+      "required": true
+    }
+  },
+  "lending": {
+    "adapter": "mock",
+    "aprBps": 450
+  },
+  "swapVenue": "mock",
+  "entryPointSource": "Canonical ERC-4337 EntryPoint v0.8 (eth-infinitism); bytecode presence verified on this chain 2026-09-24"
+}

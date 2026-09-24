@@ -1,0 +1,59 @@
+{
+  "network": "robinhoodMainnet",
+  "chainId": 4663,
+  "mode": "production",
+  "explorer": "https://robinhoodchain.blockscout.com",
+  "sources": {
+    "tokens": "https://docs.robinhood.com/chain/contracts/ (Stock Token table sourced from https://api.robinhood.com/rhj/assets)",
+    "feeds": "https://docs.chain.link/data-feeds/price-feeds/addresses?network=robinhood",
+    "verifiedAt": "2026-09-24"
+  },
+  "entryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+  "stable": {
+    "symbol": "USDG",
+    "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "decimals": 6,
+    "usdFeed": "0x61B7e5650328764B076A108EFF5fa7282a1B9aD2"
+  },
+  "stockTokens": [
+    {
+      "symbol": "AAPL",
+      "address": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+      "feed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0"
+    },
+    {
+      "symbol": "NVDA",
+      "address": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+      "feed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15"
+    },
+    {
+      "symbol": "QQQ",
+      "address": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+      "feed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae"
+    },
+    {
+      "symbol": "SPY",
+      "address": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+      "feed": "0x319724394D3A0e3669269846abE664Cd621f9f6A"
+    }
+  ],
+  "feedDecimals": 8,
+  "risk": {
+    "heartbeat": 90000,
+    "deviationBps": 500,
+    "maxLtvBps": 6000,
+    "maxReportAge": 900,
+    "sequencer": {
+      "mode": "none",
+      "required": false,
+      "reason": "Chainlink publishes no L2 Sequencer Uptime Feed for Robinhood Chain (verified 2026-09-24). The engine records this explicitly via SequencerConfigUpdated(required=false). Freshness and signed market-status reports remain enforced."
+    }
+  },
+  "lending": {
+    "adapter": "none",
+    "reason": "Morpho Blue is deployed on Robinhood Chain (0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010) but a Bloom Morpho adapter is not implemented/verified yet. The vault runs without an adapter until one is audited."
+  },
+  "swapVenue": "none",
+  "entryPointSource": "Canonical ERC-4337 EntryPoint v0.8 (eth-infinitism); bytecode presence verified on this chain 2026-09-24",
+  "ethUsdFeed": "0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9"
+}
