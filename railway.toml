@@ -4,7 +4,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
 
 [deploy]
-healthcheckPath = "/api/health"
+healthcheckPath = "/api/config"   # liveness without an RPC call; chain status: /api/health/chain
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1   # sessions, nonces and rate limits are in memory: exactly one instance

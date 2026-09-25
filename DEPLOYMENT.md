@@ -135,6 +135,12 @@ Integrations deliberately **not** deployed on mainnet until verified: a Morpho B
 - Explorer: `https://explorer.testnet.chain.robinhood.com/address/<address>` or `https://robinhoodchain.blockscout.com/address/<address>`.
 - Blockscout source verification: `npx hardhat verify --network robinhoodTestnet <address> <constructor args…>` (needs a Blockscout-compatible `etherscan.customChains` entry if you enable it). For Stylus: `cargo stylus verify --deployment-tx <hash>`.
 - Smoke-test a deployment: `GET /api/health` and `GET /api/risk` on the backend.
+- Integrity (read-only, no keys): `npx hardhat run scripts/verify-deployment.js --network robinhoodTestnet` checks the chain id,
+  code at every manifest address, the roles each role address holds, that the retired deployer holds none, and which
+  session key every active goal uses (2026-09-25: all checks pass).
+- Operating cost at 0.01 gwei (measured): report ≈ 1.7e-6 ETH, mock feed update ≈ 5.6e-7 ETH, faucet mint ≈ 6.2e-7 ETH,
+  account sponsorship ≈ 1.7e-6 ETH. At `REPORTER_INTERVAL_SEC=120` with 4 assets: REPORTER ≈ 0.0049 ETH/day,
+  MOCK_ORACLE ≈ 0.0016 ETH/day.
 
 ## 6. Public hosting topology
 
@@ -176,7 +182,7 @@ automatically; run these steps yourself.
 
 1. Railway → New Project → Deploy from GitHub repo → this repo (root directory: repo root). Railway picks up `railway.toml`.
 2. Add a **volume** mounted at `/data` (the faucet ledger, claims and history live there; `BLOOM_DATA_DIR=/data` is set in the
-   image). If Railway mounts it root-owned, set the service variable `RAILWAY_RUN_UID=0`.
+   image). The container takes ownership of it at start and then runs the API as the unprivileged `node` user.
 3. Variables (Service → Variables). Only these; never `DEPLOYER_PRIVATE_KEY`, `ADMIN_PRIVATE_KEY` or `DEMO_OWNER_PRIVATE_KEY`:
 
    ```
@@ -211,6 +217,42 @@ automatically; run these steps yourself.
 **After both are live:** run the smoke tests against the hosted API
 (`API_URL=https://<backend> BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/demo-smoke.ts`), then the ERC-8004
 registration (§9) with `PUBLIC_API_URL` set to the backend URL.
+
+### 6b. Hosting recipe: Vercel (frontend) + Render (backend)
+
+Config files: `render.yaml` (Render Blueprint, backend) and `frontend/vercel.json` (Vercel, frontend). Nothing deploys automatically.
+
+**Backend on Render**
+
+1. Push the repo, then Render → New → **Blueprint** → select the repo. Render reads `render.yaml` and creates `bloom-backend`
+   (Docker build from the repo root, plan `0.5c-512mb`, 1 GB disk at `/data`, auto-deploy off).
+   The free plan cannot be used: it spins down when idle (the reporter would stop) and has no persistent disk.
+2. Render prompts for the `sync: false` variables:
+   - `FRONTEND_ORIGIN` and `AUTH_URI`: the Vercel URL, e.g. `https://bloom.vercel.app` (fill in after step 5 if unknown, then redeploy)
+   - `PUBLIC_API_URL`: `https://bloom-backend.onrender.com` (the service URL Render shows)
+   - `REPORTER_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`, `CLAIM_AUTHORITY_PRIVATE_KEY`, `FAUCET_PRIVATE_KEY`, `MOCK_ORACLE_PRIVATE_KEY`
+   - optional: `RPC_URL` (dedicated RPC), `ADMIN_ADDRESSES` (presenter wallet for the HALT demo)
+   Never add `DEPLOYER_PRIVATE_KEY`, `ADMIN_PRIVATE_KEY` or `DEMO_OWNER_PRIVATE_KEY`. Render sets `PORT` itself.
+3. Deploy (Manual Deploy → Deploy latest commit). The platform health check is `/api/config` (no RPC call, so an RPC blip
+   does not restart the service). Then check `https://<service>/api/health` and `/api/health/chain`.
+4. Stop any local backend using the same REPORTER/AGENT keys before the hosted one starts (nonce collisions).
+
+**Frontend on Vercel**
+
+5. Vercel → Add New → Project → the repo, **Root Directory `frontend`** (`frontend/vercel.json` sets Next.js, `npm ci`,
+   `npm run build` and basic security headers). Environment variables (Production):
+   ```
+   NEXT_PUBLIC_API_URL=https://bloom-backend.onrender.com
+   NEXT_PUBLIC_CHAIN_ID=46630
+   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<Reown project id>
+   ```
+6. Deploy. Put the final Vercel URL into the backend's `FRONTEND_ORIGIN` and `AUTH_URI` (Render → Environment) and redeploy
+   the backend. Add the Vercel domain to the Reown project's allowed origins.
+7. Verify: `API_URL=https://bloom-backend.onrender.com BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/demo-smoke.ts`
+   (runs on your machine with the demo-owner/admin keys from `.env.local`), then the manual MetaMask pass against the Vercel URL.
+
+Notes: each backend deploy restarts the single instance (a disk rules out zero-downtime deploys) and signs users out.
+The container takes ownership of `/data` at start and then runs the API as the unprivileged `node` user.
 
 ## 7. Multisig readiness
 

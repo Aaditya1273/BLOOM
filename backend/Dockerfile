@@ -17,6 +17,7 @@ COPY backend/data/contacts.json backend/data/contacts.json
 ENV BLOOM_DATA_DIR=/data
 RUN mkdir -p /data && chown node:node /data
 WORKDIR /app/backend
-USER node
 EXPOSE 3001
-CMD ["node", "src/index.ts"]
+# hosting disks are often mounted root-owned: take ownership of the data dir, then run the API as the unprivileged
+# "node" user (setpriv ships with Debian's util-linux, so no extra package)
+CMD ["sh", "-c", "chown -R node:node \"$BLOOM_DATA_DIR\" 2>/dev/null; exec setpriv --reuid=node --regid=node --init-groups node src/index.ts"]

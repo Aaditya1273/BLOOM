@@ -1,0 +1,59 @@
+# Render Blueprint: Bloom backend (API + in-process halt-aware reporter) on Robinhood Chain Testnet.
+# The frontend is hosted on Vercel (frontend/vercel.json). Nothing here deploys until you create the Blueprint in Render.
+#
+# Plan: the reporter runs inside this service, so it must never sleep, and the faucet ledger / claims / history need a
+# persistent disk. Render's free plan spins down when idle and has no disks, so this uses the smallest paid plan.
+# One instance only (a service with a disk cannot scale, and sessions, nonces and rate limits are in memory anyway).
+# A disk also means no zero-downtime deploys: each deploy restarts the service and signs everyone out.
+services:
+  - type: web
+    name: bloom-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: 0.5c-512mb
+    healthCheckPath: /api/config # liveness without an RPC call; chain status: /api/health/chain
+    autoDeployTrigger: "off"
+    maxShutdownDelaySeconds: 15 # the backend drains and exits within 10 s of SIGTERM
+    disk:
+      name: bloom-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BLOOM_DEPLOYMENT
+        value: robinhood-testnet
+      - key: BLOOM_DATA_DIR
+        value: /data
+      - key: TRUST_PROXY
+        value: "1"
+      - key: REPORTER_INTERVAL_SEC
+        value: "120"
+      # Set in the dashboard when the Blueprint is created (sync: false = prompted, never stored in git).
+      # Exact frontend origin(s), comma-separated, e.g. https://bloom.vercel.app (no wildcard; production refuses one)
+      - key: FRONTEND_ORIGIN
+        sync: false
+      # Origin wallet sign-ins are bound to: the same frontend URL
+      - key: AUTH_URI
+        sync: false
+      # This service's public URL, e.g. https://bloom-backend.onrender.com (ERC-8004 metadata)
+      - key: PUBLIC_API_URL
+        sync: false
+      # Optional: dedicated Robinhood testnet RPC (defaults to the public, rate-limited RPC)
+      - key: RPC_URL
+        sync: false
+      # Optional: presenter wallet(s) allowed to run the risk simulations in the demo
+      - key: ADMIN_ADDRESSES
+        sync: false
+      # Backend role keys ONLY. Never set DEPLOYER_PRIVATE_KEY, ADMIN_PRIVATE_KEY or DEMO_OWNER_PRIVATE_KEY here.
+      - key: REPORTER_PRIVATE_KEY
+        sync: false
+      - key: AGENT_PRIVATE_KEY
+        sync: false
+      - key: CLAIM_AUTHORITY_PRIVATE_KEY
+        sync: false
+      - key: FAUCET_PRIVATE_KEY
+        sync: false
+      - key: MOCK_ORACLE_PRIVATE_KEY
+        sync: false
