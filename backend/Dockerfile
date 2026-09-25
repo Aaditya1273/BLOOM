@@ -3,6 +3,8 @@
 # Secrets come only from the host's environment variables at runtime; nothing is baked into the image.
 FROM node:26-slim
 ENV NODE_ENV=production
+# this image serves the Robinhood Chain Testnet deployment unless the host overrides it
+ENV BLOOM_DEPLOYMENT=robinhood-testnet
 WORKDIR /app
 COPY backend/package.json backend/package-lock.json backend/
 RUN npm ci --prefix backend --omit=dev

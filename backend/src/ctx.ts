@@ -1,5 +1,5 @@
 // Runtime context: env, deployment, provider, keys, contracts and small shared helpers.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -21,7 +21,11 @@ const env = process.env;
 
 export type AssetInfo = { symbol: string; token: string; feed?: string; decimals: number; kind: "STABLE" | "STOCK_TOKEN" };
 export const DEPLOYMENT_NAME = env.BLOOM_DEPLOYMENT ?? "localhost";
-export const deployment = JSON.parse(readFileSync(join(ROOT, "deployments", `${DEPLOYMENT_NAME}.json`), "utf8"));
+const deploymentFile = join(ROOT, "deployments", `${DEPLOYMENT_NAME}.json`);
+if (!existsSync(deploymentFile)) {
+  throw new Error(`No deployment manifest deployments/${DEPLOYMENT_NAME}.json. Set BLOOM_DEPLOYMENT (e.g. robinhood-testnet).`);
+}
+export const deployment = JSON.parse(readFileSync(deploymentFile, "utf8"));
 export const chainId: number = deployment.chainId;
 export const MAINNET = chainId === 4663;
 export const LOCAL = chainId === 31337;

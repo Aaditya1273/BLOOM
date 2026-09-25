@@ -11,6 +11,13 @@ function fatal(msg: string): never {
   process.exit(1);
 }
 
+// 0. hosted: every role key this process needs must be configured (names only, never values)
+if (process.env.NODE_ENV === "production" && chainId !== 31337) {
+  const need = ["REPORTER_PRIVATE_KEY", "AGENT_PRIVATE_KEY", "CLAIM_AUTHORITY_PRIVATE_KEY", ...(MAINNET ? [] : ["FAUCET_PRIVATE_KEY", "MOCK_ORACLE_PRIVATE_KEY"])];
+  const missing = need.filter((k) => !process.env[k]?.trim());
+  if (missing.length) fatal(`Missing environment variables: ${missing.join(", ")}`);
+}
+
 // 1. key separation: distinct key per role, never the deployer/admin key
 try {
   assertKeySeparation();
