@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Contract, decodeBytes32String, getAddress, id as keccakId, parseUnits } from "ethers";
 import {
-  ABI, IFACE, NETWORK_NAME, USDG, addr, agentKey, assetBySymbol, assets, c, erc20, fail, fmt, provider, sendTx, usd, DATA_DIR,
+  ABI, IFACE, NETWORK_NAME, USDG, addr, agentKey, assetBySymbol, assets, c, erc20, fail, fmt, provider, sendTx, usd, ROOT,
 } from "./ctx.ts";
 import { accountAddress, accountView, createGoal, type GoalInput } from "./account.ts";
 import { riskAll, riskOf, STATE_ADJ, STATE_REASON, type StateName } from "./risk.ts";
@@ -25,7 +25,7 @@ const CLAIM_TTL_SEC = 7 * 86_400;
 type Contact = { name: string; address: string };
 export function contacts(): Contact[] {
   try {
-    return JSON.parse(readFileSync(join(DATA_DIR, "contacts.json"), "utf8")).contacts;
+    return JSON.parse(readFileSync(join(ROOT, "backend", "data", "contacts.json"), "utf8") /* seed config, not runtime data */).contacts;
   } catch {
     return [];
   }

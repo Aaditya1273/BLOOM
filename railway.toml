@@ -1,0 +1,10 @@
+# Railway service for the Bloom backend (API + in-process reporter). The frontend is hosted separately (Vercel).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+numReplicas = 1   # sessions, nonces and rate limits are in memory: exactly one instance

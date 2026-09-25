@@ -329,8 +329,9 @@ export function createApp(reporter: Reporter | null) {
   });
 
   // ─── ERC-8004 agent metadata (registration file) ───
-  app.get("/api/agent/metadata", (_req, res) => {
-    const base = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? 3001}`;
+  app.get("/api/agent/metadata", (req, res) => {
+    // the public URL this API is served at (behind a proxy, set TRUST_PROXY so the scheme is right)
+    const base = (process.env.PUBLIC_API_URL ?? `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
     res.json({
       type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
       name: "Bloom Agent",

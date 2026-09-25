@@ -154,6 +154,13 @@ The EntryPoint then enforces expiry.
 | Slippage or front-running on swaps | Non-zero `minAmountOut`, deadline, output verified by balance delta | router tests |
 | Emergency admin abuse | Guardian can only pause. Admin unpause is separate. No admin path moves user collateral | pause test |
 | Paymaster drain (Aura) | The unconditional Aura paymaster was removed | — |
+| Unauthenticated or impersonated API calls | EIP-712 sign-in, session-derived wallet, owner/recipient mismatch → 403 | `backend/test/security.test.ts` (401 on every mutating endpoint, forged owner, forged token) |
+| Sign-in replay, expiry, cross-chain, cross-domain, wrong signer | Single-use nonce, 5-min expiry, chain/app/URI binding, signer check | `backend/test/auth.test.ts` |
+| Admin action by a normal user | Onchain `DEFAULT_ADMIN_ROLE` / `ADMIN_ADDRESSES` gate | `security.test.ts` (user 403, admin passes) |
+| API flooding | Per-IP+wallet rate limits → 429 | `security.test.ts` |
+| Cross-origin abuse | Exact-origin CORS allowlist; production refuses a wildcard | `security.test.ts` |
+| One key compromising several roles | Distinct role keys, startup refusal on reuse, deployer renounces everything | `security.test.ts`, `test/RoleSeparation.test.js` |
+| Stalled RPC holding requests/keys | 20 s RPC timeout, bounded receipt wait (504 pending), per-key lock released | `security.test.ts` |
 
 ## Known limitations
 
@@ -169,6 +176,11 @@ The EntryPoint then enforces expiry.
 - Sign-in supports EOA signatures only (no ERC-1271 smart-contract wallets yet).
 - The testnet faucet sponsors account-creation gas; many fresh wallets from many IPs could drain the faucet key's ETH (bounded by the daily cap).
 - The Stylus engine's source is not yet verified on the explorer (`DEPLOYMENT.md` §8).
+- **No admin-side agent revocation.** Only an account or its owner can revoke a goal; `BloomPolicy` has no owner. If an
+  agent key is compromised, goals naming it stay usable within their policy (caps, allowlist, NORMAL-only) until the
+  owner revokes them or they expire. On testnet, goal #1 on account `0x0eEa…8435` names the retired key and its owner key
+  was a discarded test wallet: bounded to $50/day of mock USDG until 2026-12-15. Before mainnet, add a guardian-controlled
+  agent denylist to `BloomPolicy` (contract change, not made in this release).
 - ERC-8004 identity is supplementary and plays no part in security decisions.
 
 ## Reporting

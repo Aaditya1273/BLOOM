@@ -167,6 +167,51 @@ risk engine address and implementation). Neither exposes keys or addresses of ro
 Current single-instance limits: sessions, nonces and rate-limit counters are in memory (a restart signs everyone out;
 more than one replica needs a shared store such as Redis), and the JSON data store lives on local disk (`BLOOM_DATA_DIR`).
 
+### 6a. Hosting recipe: Vercel (frontend) + Railway (backend)
+
+Judge browser → Bloom frontend (Vercel) → Bloom backend (Railway) → Robinhood Chain Testnet. Nothing deploys
+automatically; run these steps yourself.
+
+**Backend on Railway** (`railway.toml` + `backend/Dockerfile`, built from the repo root)
+
+1. Railway → New Project → Deploy from GitHub repo → this repo (root directory: repo root). Railway picks up `railway.toml`.
+2. Add a **volume** mounted at `/data` (the faucet ledger, claims and history live there; `BLOOM_DATA_DIR=/data` is set in the
+   image). If Railway mounts it root-owned, set the service variable `RAILWAY_RUN_UID=0`.
+3. Variables (Service → Variables). Only these; never `DEPLOYER_PRIVATE_KEY`, `ADMIN_PRIVATE_KEY` or `DEMO_OWNER_PRIVATE_KEY`:
+
+   ```
+   NODE_ENV=production
+   BLOOM_DEPLOYMENT=robinhood-testnet
+   FRONTEND_ORIGIN=https://<your-app>.vercel.app
+   AUTH_URI=https://<your-app>.vercel.app
+   TRUST_PROXY=1
+   RPC_URL=<dedicated Robinhood testnet RPC if you have one; default is the public RPC>
+   REPORTER_PRIVATE_KEY=...   AGENT_PRIVATE_KEY=...   CLAIM_AUTHORITY_PRIVATE_KEY=...
+   FAUCET_PRIVATE_KEY=...     MOCK_ORACLE_PRIVATE_KEY=...
+   REPORTER_INTERVAL_SEC=300   # optional: fewer reporter txs while judging
+   PUBLIC_API_URL=https://<backend>.up.railway.app
+   ```
+   Railway sets `PORT`; the backend reads it.
+4. Settings → Networking → Generate Domain. Check `https://<backend>/api/health` and `/api/health/chain`.
+5. Stop any locally running backend that uses the same REPORTER/AGENT keys: two processes sending from one key collide on nonces.
+
+**Frontend on Vercel**
+
+1. Vercel → Add New Project → this repo, **Root Directory `frontend`** (framework: Next.js, default build).
+2. Environment variables (Production):
+   ```
+   NEXT_PUBLIC_API_URL=https://<backend>.up.railway.app
+   NEXT_PUBLIC_CHAIN_ID=46630
+   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=<Reown project id>
+   ```
+   No private key is ever set on Vercel.
+3. Deploy, then set the backend's `FRONTEND_ORIGIN` / `AUTH_URI` to the final Vercel URL (custom domain if used) and redeploy the backend.
+4. In the Reown (WalletConnect) dashboard, add the Vercel domain to the project's allowed origins.
+
+**After both are live:** run the smoke tests against the hosted API
+(`API_URL=https://<backend> BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/demo-smoke.ts`), then the ERC-8004
+registration (§9) with `PUBLIC_API_URL` set to the backend URL.
+
 ## 7. Multisig readiness
 
 - All owner contracts use `Ownable2Step`; the vault and mocks use `AccessControl`. Set `ADMIN_ADDRESS=<Safe>` (and no
@@ -188,7 +233,14 @@ more than one replica needs a shared store such as Redis), and the JSON data sto
 | Source commit | `14a21e3` (`stylus-risk-engine/` unchanged since) |
 | Toolchain | Rust 1.91.0 (`rust-toolchain.toml`), stylus-sdk 0.10.6, cargo-stylus 0.10.9 |
 | Owner / reporter | ADMIN `0xaC0e…4c00` / REPORTER `0x87D1…dDaa` (verified onchain after rotation) |
-| **Source verified** | **No.** It was built natively with `--no-verify`; the explorer reports `is_verified: false`. Reproducible verification needs Docker: `cd stylus-risk-engine && cargo stylus verify --deployment-tx 0xac69…e403 --endpoint https://rpc.testnet.chain.robinhood.com`. Until that succeeds, treat the deployed bytecode as unverified. |
+| **Source verified** | **No.** It was built natively with `--no-verify`; the explorer reports `is_verified: false`. Reproducible verification needs Docker: `cd stylus-risk-engine && cargo stylus verify --deployment-tx 0xac69…e403 --endpoint https://rpc.testnet.chain.robinhood.com`. Until that succeeds, treat the deployed bytecode as unverified. Checked 2026-09-25: Docker is installed but the daemon is not running on the release machine (`sudo systemctl start docker` needed). |
+
+### 8a. Retired agent key: goal audit
+
+`BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/revoke-old-goals.ts [--apply]` lists every goal and flags those
+whose session key is not the current AGENT key; `--apply` revokes the ones whose owner key this operator holds.
+Result 2026-09-25: 12 goals; one (#1) still names the retired key and cannot be revoked (its owner was a discarded test
+wallet); all other active goals use the rotated agent `0x04d0…35C7`. See SECURITY.md, known limitations.
 
 ## 9. ERC-8004 identity (optional)
 

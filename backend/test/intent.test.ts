@@ -26,6 +26,16 @@ test("demo phrases parse deterministically", () => {
   }
 });
 
+test("a goal without a date gets a bounded 90-day deadline (the frozen demo phrase)", () => {
+  const g: any = p("Save $500 for my laptop.");
+  assert.equal(g.action, "CREATE_GOAL");
+  assert.equal(g.name, "Laptop");
+  assert.equal(g.targetAmount, "500");
+  assert.equal(g.deadline, "2026-12-23T23:59:59Z");
+  assert.equal(p("Save $500 for my laptop by Smarch 99.").action, "UNKNOWN", "a bad date is not silently turned into 90 days");
+  assert.equal(p("Save $100").action, "DEPOSIT");
+});
+
 test("deadline parsing rolls to next year and rejects nonsense", () => {
   assert.equal(parseDeadline("Dec 15th", NOW), "2026-12-15T23:59:59Z");
   assert.equal(parseDeadline("15 March", NOW), "2027-03-15T23:59:59Z");

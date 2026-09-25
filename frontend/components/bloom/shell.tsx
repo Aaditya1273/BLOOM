@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MotionConfig } from "framer-motion";
 import * as Popover from "@radix-ui/react-popover";
 import { ChevronDown, Clock3, House, LogOut, MessageCircle, ShieldCheck, Sparkles, Target, TriangleAlert, Wallet } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Toaster } from "sonner";
@@ -216,14 +216,39 @@ function PublicTopBar() {
   );
 }
 
+// what is real and what is a testnet stand-in; never imply mock assets are production assets
+const DATA_SOURCES = [
+  ["USDG", "TESTNET MOCK", "MockUSDG on Robinhood Chain Testnet, no real value"],
+  ["Stock Tokens", "TESTNET MOCK", "mock AAPL, NVDA, QQQ, SPY tokens, not Robinhood's production Stock Tokens"],
+  ["Price data", "LIVE ROBINHOOD API", "live quotes, relayed onchain through testnet mock price feeds"],
+  ["Risk engine", "LIVE STYLUS CONTRACT", "Bloom's Rust risk engine deployed on Robinhood Chain Testnet"],
+] as const;
+
 function Footer({ withTabs }: { withTabs: boolean }) {
   return (
     <footer className={cn("mx-auto w-full max-w-[1200px] pt-16", PAGE_X, withTabs ? "pb-28 md:pb-12" : "pb-12")}>
       <div className="flex flex-col gap-4 border-t border-line pt-6 text-xs leading-relaxed text-muted sm:flex-row sm:items-start sm:justify-between">
-        <p className="max-w-2xl">
-          Testnet demo with mock assets. Not investment advice. Robinhood Stock Tokens provide economic exposure to the
-          underlying equity, not ownership of shares; availability is jurisdiction-dependent.
-        </p>
+        <div className="max-w-2xl">
+          <p>
+            Testnet demo with mock assets. Not investment advice. Robinhood Stock Tokens provide economic exposure to the
+            underlying equity, not ownership of shares; availability is jurisdiction-dependent.
+          </p>
+          <details className="group mt-3">
+            <summary className="flex cursor-pointer items-center gap-1 font-medium text-ink">
+              About this testnet demo <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+            </summary>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+              {DATA_SOURCES.map(([what, source, note]) => (
+                <Fragment key={what}>
+                  <dt>{what}</dt>
+                  <dd>
+                    <span className="font-semibold text-ink">{source}</span> · {note}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
+          </details>
+        </div>
         <Link href="/" className="shrink-0 font-medium text-ink underline-offset-4 hover:underline">
           How Bloom works
         </Link>

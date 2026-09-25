@@ -1,0 +1,13 @@
+**/node_modules
+**/.env*
+!**/.env.example
+.git
+frontend
+legacy
+stylus-risk-engine/target
+artifacts
+cache
+out
+backend/data/*.json
+!backend/data/contacts.json
+docs

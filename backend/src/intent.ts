@@ -30,6 +30,8 @@ const amt = (s: string) => s.replace(/,/g, "").replace(/\.$/, "");
 const title = (s: string) => s.trim().replace(/^(my|a|an|the)\s+/i, "").replace(/^\w/, (x) => x.toUpperCase());
 
 /** "December 15", "Dec 15th", "15 December", "2026-12-15" -> end of that day (UTC), rolling to next year if past. */
+const GOAL_DEFAULT_DAYS = 90;
+
 export function parseDeadline(text: string, now: Date): string | null {
   const t = text.trim().toLowerCase().replace(/[.!?]+$/, "");
   let y: number | undefined, m: number, d: number;
@@ -77,6 +79,11 @@ export function parseIntent(message: string, symbols: string[], now = new Date()
     if (deadline) {
       return { action: "CREATE_GOAL", name: m[2] ? title(m[2]).slice(0, 31) : "Savings goal", targetAmount: amt(m[1]), asset: "USDG", deadline, ...GOAL_DEFAULTS };
     }
+  }
+  // "Save $500 for my laptop." (no date): the goal and its agent session key expire in 90 days
+  if ((m = text.match(/^(?:save|saving)\s+\$([\d,]+(?:\.\d+)?)\s+for\s+(.+?)[.!]?$/i)) && !/\s(?:by|before)\s/i.test(` ${m[2]} `)) {
+    const deadline = new Date(now.getTime() + GOAL_DEFAULT_DAYS * 86_400_000).toISOString().slice(0, 10) + "T23:59:59Z";
+    return { action: "CREATE_GOAL", name: title(m[2]).slice(0, 31), targetAmount: amt(m[1]), asset: "USDG", deadline, ...GOAL_DEFAULTS };
   }
   if (/\bborrow(ing)?\b/i.test(text)) return { action: "EXPLAIN_BORROW", symbol: findSym() };
   if (/\b(risk|risky|safe|halt(ed)?|collateral)\b/i.test(text)) return { action: "EXPLAIN_RISK", symbol: findSym() };

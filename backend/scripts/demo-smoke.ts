@@ -91,7 +91,7 @@ assert.ok(Number(acct.savings.valueUsd) >= savedBefore + 99.99, `savings ${acct.
 check("deposit $100", `shares ${d.shares}, savings $${acct.savings.valueUsd}, tx ${d.txHash.slice(0, 10)}…`);
 
 // 3. laptop goal
-const { goal } = await ok("POST", "/api/goals/preview", { text: "Save $500 for my laptop by December 15." });
+const { goal } = await ok("POST", "/api/goals/preview", { text: "Save $500 for my laptop." });
 assert.deepEqual([goal.name, goal.targetAmount, goal.maxDailySpend, goal.maxStockAllocationBps, goal.allowedAssets.join()], ["Laptop", "500", "50", 3000, "USDG,QQQ,NVDA"]);
 const g = await ok("POST", "/api/goals", { goal });
 const goals = await ok("GET", "/api/goals");

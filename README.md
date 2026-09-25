@@ -106,19 +106,30 @@ against reentrancy, replay, malleable signatures, stale, invalid or future price
 ERC-4626 inflation and donation attacks, fee-on-transfer tokens, canonical-token spoofing, unrestricted
 agents and claim double-spends. Each of these has a test.
 
+The API trusts no client-supplied address: wallets sign in with an EIP-712 challenge (single-use nonce, chain- and
+domain-bound, 5-minute expiry) and every account action runs for the signed-in wallet only. Owner actions are signed by
+the user's own wallet; risk simulations are admin-only; every role (deployer, admin, reporter, agent, claim authority,
+faucet, mock oracle) has its own key, and the deployer holds no role after deployment.
+
 ## 10. Testnet Demo (90 seconds)
 
 | Time | Step |
 | --- | --- |
-| 0–15s | Get test USDG → deposit **$100** into savings |
-| 15–30s | Agent: "Save $500 for my laptop by December 15." → policy card ($50/day, 30% Stock Tokens, USDG/QQQ/NVDA) → **Activate Agent** |
-| 30–50s | Chat: "Send Sarah $5 of QQQ." → confirmation card → executed onchain |
-| 50–75s | Risk page: AAPL · price · oracle age · Halt NO · Corporate Action NO · Deviation SAFE · Sequencer UP · **Borrowing ENABLED · Max LTV 60%** |
-| 75–90s | **Simulate Halt** → signed report onchain → **HALT DETECTED · Borrowing DISABLED · Max LTV 0%** → Reset → NORMAL |
+| 0–15s | Get test USDG → deposit **$100** of MockUSDG into savings |
+| 15–30s | Goals: "Save $500 for my laptop." → policy card ($50/day, 30% Stock Tokens, USDG/QQQ/NVDA, 90-day expiry) → **Put your goal on autopilot** |
+| 30–50s | Chat: "Send Sarah $5 of QQQ." → confirmation card → executed onchain by the policy-bound agent |
+| 50–70s | Risk page: AAPL · price · freshness · halt NO · corporate action NO · deviation · risk NORMAL · **Borrowing ENABLED · Max LTV 60%** |
+| 70–90s | **Simulate HALT** → signed report onchain → **HALTED · Borrowing DISABLED · Max LTV 0%** → Reset → NORMAL |
 
 Closing line: *"Bloom doesn't replace the price oracle. It adds equity-specific risk interpretation around it."*
 
-The complete flow is also an automated test: `test/DemoFlow.test.js`.
+The risk simulation controls are admin-only. To present the demo, add the presenter's wallet to the backend's
+`ADMIN_ADDRESSES` (or hold the vault's `DEFAULT_ADMIN_ROLE`); normal users never see them. The complete flow is also an
+automated test (`test/DemoFlow.test.js`) and an HTTP smoke test against testnet (`backend/scripts/demo-smoke.ts`).
+
+**What is real on testnet** (also shown in the app under "About this testnet demo"): USDG and Stock Tokens are
+**testnet mocks**; price data is **live from the Robinhood API**, relayed onchain through mock feeds; the risk engine is
+the **live Stylus contract**.
 
 ## 11. Mainnet Readiness
 
@@ -161,17 +172,19 @@ npm test              # Hardhat: risk engine vectors + onchain behaviour, vault,
 npm run test:fuzz     # Foundry: RiskLib property fuzzing, policy calldata fuzzing, vault invariants
 npm run test:stylus   # Rust: Stylus risk engine (vectors, EIP-712 parity, contract tests)
 npm --prefix offchain/reporter test && npm --prefix backend test
-npm --prefix backend run smoke   # full HTTP demo against a running local stack
+npm --prefix backend run smoke   # full HTTP demo against a running backend (BLOOM_DEPLOYMENT=robinhood-testnet for testnet)
+BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/wallet-flow-smoke.ts   # a fresh wallet signs every owner action
 ```
 
 | Suite | Result |
 | --- | --- |
-| Hardhat (contracts, vectors, ERC-4337, demo flow) | 131 passing |
+| Hardhat (contracts, vectors, ERC-4337, demo flow, role separation) | 139 passing |
 | Foundry (fuzz 1,000 runs/property, invariants 128×64) | 11 passing |
 | Stylus Rust (vectors, EIP-712 parity, contract tests) | 16 passing |
 | Reporter (`node --test`) | 9 passing |
-| Backend (`node --test`) | 5 passing |
-| Backend HTTP smoke (90-second demo + claim link + halted-asset rejection) | 12/12 checks |
+| Backend (`node --test`: intents, auth/replay, API authorization matrix, rate limits, CORS, key separation) | 22 passing |
+| Backend HTTP smoke, local and **live testnet** (auth lockdown, 90-second demo, claim link, halted-asset rejection) | 13/13 checks |
+| Wallet flow, local and **live testnet** (user wallet signs every owner action) | 7/7 checks |
 | Frontend | `tsc`, `eslint`, `next build` clean |
 
 ## 14. Contract Addresses
@@ -228,7 +241,7 @@ Mobile (390px): [home](docs/screenshots/home-mobile.png) · [chat](docs/screensh
 
 ## 16. Demo Video
 
-The 90-second script is in §10. Record it against testnet once `deployments/robinhood-testnet.json` exists.
+The 90-second script is in §10; record it against the live testnet deployment.
 
 ## 17. Known Limitations
 
@@ -237,7 +250,13 @@ The 90-second script is in §10. Record it against testnet once `deployments/rob
 - There is a single reporter key (quorum is future work). Robinhood Chain has no official sequencer uptime feed.
 - Testnet assets are mocks, because Robinhood Chain testnet has no official USDG, Stock Tokens or Chainlink feeds.
 - No gas-comparison claims are made between the Stylus and EVM engines. No reproducible benchmark is included.
-- ERC-8004 identity (if enabled) is supplementary and uses the registry maintained by the ERC-8004 team, not a Robinhood registry.
+- ERC-8004 identity is supplementary and uses the registry maintained by the ERC-8004 team, not a Robinhood registry. Bloom is registered only once it has a public URL (see DEPLOYMENT.md §9).
+- The Stylus engine's source is not yet verified on the explorer (DEPLOYMENT.md §8).
+- The backend keeps sessions and rate limits in memory (one instance); the public RPC is rate-limited.
+- One testnet goal (#1) created before the key rotation still names the retired key as its agent. Its owner key was a
+  discarded test wallet, so nobody can revoke it; exposure is ≤ $50/day of mock USDG from that orphaned account until
+  2026-12-15. BloomPolicy has no admin-side revocation by design (see SECURITY.md).
+- Wallet sign-in supports EOAs only (no ERC-1271 smart-contract wallets yet).
 
 ## 18. Disclaimer
 

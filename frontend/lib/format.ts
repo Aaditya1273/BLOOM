@@ -148,7 +148,7 @@ export function errorMessage(e: unknown): string {
   // wallet (viem/wagmi) errors carry a shortMessage; map the common ones to plain English
   const raw = String((e as { shortMessage?: string })?.shortMessage ?? (e instanceof Error ? e.message : ""));
   if (/user rejected|user denied|rejected the request/i.test(raw)) return "You cancelled the request in your wallet.";
-  if (/insufficient funds/i.test(raw)) return "Your wallet needs a little testnet ETH on Robinhood Chain for gas.";
+  if (/insufficient funds|exceeds the balance of the account/i.test(raw)) return "Your wallet needs a little testnet ETH on Robinhood Chain for gas.";
   if (/chain mismatch|does not match the target chain|switch chain/i.test(raw)) return "Switch your wallet to Robinhood Chain Testnet and try again.";
   if (/timed out while waiting for transaction/i.test(raw)) return "Your transaction was sent but isn't confirmed yet. Check Activity in a minute before trying again.";
   return raw || "Something went wrong. Please try again.";
