@@ -7,7 +7,8 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { ethers, network } = require("hardhat");
 const { deployTestnetSystem, deployMainnetSystem } = require("./lib/system");
-const { testnetRoleKey } = require("./lib/env");
+const { roleAddress, roleKey } = require("./lib/env");
+const { handOverRoles, rolesHeldBy } = require("./lib/roles");
 
 const log = (m) => console.log(m);
 const addrFromKey = (k) => (k ? new ethers.Wallet(k).address : undefined);
@@ -46,6 +47,10 @@ async function main() {
       riskEngineAddress: process.env.BLOOM_RISK_ENGINE_ADDRESS,
       allowEvmRiskEngine: process.env.ALLOW_EVM_RISK_ENGINE === "true",
     });
+    // production admin should be a Safe: ownership transfers stay pending until the Safe calls acceptOwnership()
+    const pending = await handOverRoles(out, { deployer: admin, admin: roleAddress("ADMIN"), reporter: reporterAddress, claimAuthority: claimAuthorityAddress, log });
+    out.roles = { admin: roleAddress("ADMIN"), reporter: reporterAddress, claimAuthority: claimAuthorityAddress, deployer: admin.address };
+    if (pending.length) out.pendingAdminActions = pending;
     writeDeployment("robinhood-mainnet", out);
     return;
   }
@@ -54,13 +59,35 @@ async function main() {
   if (chainId !== 46630 && chainId !== 31337) throw new Error(`Refusing to deploy testnet mocks on chain ${chainId}`);
   const cfg = require("../config/robinhood-testnet.json");
   const local = chainId === 31337;
-  // local: Hardhat dev accounts; testnet: separate keys if set, otherwise the deployer key (single-key testnet setup)
-  const reporter = local ? signers[1] : new ethers.Wallet(testnetRoleKey("REPORTER_PRIVATE_KEY"));
-  const claimAuthority = local ? signers[2] : new ethers.Wallet(testnetRoleKey("CLAIM_AUTHORITY_PRIVATE_KEY"));
-  if (!reporter || !claimAuthority) throw new Error("Set REPORTER_PRIVATE_KEY and CLAIM_AUTHORITY_PRIVATE_KEY in .env");
+  // local: Hardhat dev accounts (convenience). testnet: every role is a distinct, explicitly configured address.
+  const addrOnly = (a) => new ethers.VoidSigner(a, ethers.provider);
+  const reporter = local ? signers[1] : addrOnly(roleAddress("REPORTER"));
+  const claimAuthority = local ? signers[2] : addrOnly(roleAddress("CLAIM_AUTHORITY"));
 
   const sys = await deployTestnetSystem(cfg, { admin, reporter, claimAuthority, riskEngineAddress: process.env.BLOOM_RISK_ENGINE_ADDRESS, log });
-  const out = { ...sys.out, roles: { admin: admin.address, reporter: await reporter.getAddress(), claimAuthority: await claimAuthority.getAddress() } };
+  const out = { ...sys.out, roles: { deployer: admin.address, reporter: await reporter.getAddress(), claimAuthority: await claimAuthority.getAddress() } };
+
+  if (!local) {
+    // hand every role to its own key; the deployer keeps nothing
+    const roles = {
+      admin: roleAddress("ADMIN"),
+      reporter: out.roles.reporter,
+      claimAuthority: out.roles.claimAuthority,
+      faucet: roleAddress("FAUCET"),
+      mockOracle: roleAddress("MOCK_ORACLE"),
+    };
+    const distinct = new Set([admin.address, ...Object.values(roles)].map((a) => a.toLowerCase()));
+    if (distinct.size !== 6) throw new Error("Deployer, admin, reporter, claim authority, faucet and mock oracle must be six distinct addresses");
+    const adminSigner = roleKey("ADMIN") ? new ethers.Wallet(roleKey("ADMIN"), ethers.provider) : undefined;
+    log("\nHanding over roles:");
+    const pending = await handOverRoles(out, { deployer: admin, adminSigner, ...roles, log });
+    // ownership that is pending acceptance by a multisig admin is expected to still sit with the deployer
+    const pendingOwner = (r) => r.endsWith(".owner") && pending.some((p) => p.startsWith(r.split(".")[0]));
+    const left = (await rolesHeldBy(out, admin.address)).filter((r) => !pendingOwner(r));
+    if (left.length) throw new Error(`deployer still holds: ${left.join(", ")}`);
+    out.roles = { ...roles, deployer: `${admin.address} (no roles)` };
+    if (pending.length) out.pendingAdminActions = pending;
+  }
   writeDeployment(local ? "localhost" : "robinhood-testnet", out);
 }
 

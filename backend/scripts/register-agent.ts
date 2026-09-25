@@ -7,6 +7,7 @@ import { Contract, FetchRequest, JsonRpcProvider, Wallet } from "ethers";
 import { installFetchTransport } from "../../offchain/ethers-fetch.ts";
 
 installFetchTransport(FetchRequest);
+dotenv.config({ path: new URL("../../.env.local", import.meta.url).pathname, quiet: true });
 dotenv.config({ path: new URL("../../.env", import.meta.url).pathname, quiet: true });
 const { ERC8004_IDENTITY_REGISTRY: registry, ERC8004_RPC_URL: rpc, ERC8004_OWNER_PRIVATE_KEY: pk, PUBLIC_API_URL: base } = process.env;
 if (!registry) {
@@ -14,6 +15,8 @@ if (!registry) {
   process.exit(0);
 }
 if (!rpc || !pk || !base) throw new Error("Set ERC8004_RPC_URL, ERC8004_OWNER_PRIVATE_KEY and PUBLIC_API_URL");
+// the agent URI must be publicly reachable, otherwise the registration points at nothing
+if (/localhost|127\.0\.0\.1|^http:/i.test(base)) throw new Error(`PUBLIC_API_URL must be a public https URL, got ${base}`);
 const provider = new JsonRpcProvider(rpc, undefined, { cacheTimeout: -1 });
 if ((await provider.getCode(registry)) === "0x") throw new Error(`No contract at ${registry} on this RPC`);
 const abi = [

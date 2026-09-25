@@ -1,6 +1,6 @@
 // CLI: node src/cli.ts --once | --loop [--interval 30]
 // Env: RPC_URL (or RH_TESTNET_RPC_URL / RH_MAINNET_RPC_URL), BLOOM_DEPLOYMENT, REPORTER_PRIVATE_KEY,
-//      FEED_ADMIN_PRIVATE_KEY (testnet-mock), CORP_ACTION_WINDOW_SEC. Local (31337) falls back to Hardhat dev keys.
+//      MOCK_ORACLE_PRIVATE_KEY (testnet-mock), CORP_ACTION_WINDOW_SEC. Local (31337) falls back to Hardhat dev keys.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 dotenv.config({ path: join(ROOT, ".env.local"), quiet: true });
 dotenv.config({ path: join(ROOT, ".env"), quiet: true });
 const hex0x = (k?: string) => (k ? (k.trim().startsWith("0x") ? k.trim() : `0x${k.trim()}`) : undefined);
-if (!process.env.DEPLOYER_PRIVATE_KEY && process.env.PRIVATE_KEY) process.env.DEPLOYER_PRIVATE_KEY = hex0x(process.env.PRIVATE_KEY);
 
 const { values } = parseArgs({ options: { once: { type: "boolean" }, loop: { type: "boolean" }, interval: { type: "string", default: "30" } } });
 const env = process.env;
@@ -27,9 +26,9 @@ const rpcUrl =
     : deployment.chainId === 46630
       ? env.RH_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com"
       : "http://127.0.0.1:8545");
-// testnet: the deployer key doubles as reporter unless REPORTER_PRIVATE_KEY is set; mainnet requires an explicit key
-const reporterKey = hex0x(env.REPORTER_PRIVATE_KEY) ?? (local ? HH[1] : deployment.chainId === 4663 ? undefined : env.DEPLOYER_PRIVATE_KEY);
-const feedAdminKey = env.FEED_ADMIN_PRIVATE_KEY ?? env.DEPLOYER_PRIVATE_KEY ?? (local ? HH[0] : undefined);
+// key separation: the reporter and the mock oracle each use their own key (public Hardhat dev keys only on chain 31337)
+const reporterKey = local ? HH[1] : hex0x(env.REPORTER_PRIVATE_KEY);
+const feedAdminKey = local ? HH[0] : hex0x(env.MOCK_ORACLE_PRIVATE_KEY);
 if (!rpcUrl || !reporterKey) {
   console.error("Set RPC URL and REPORTER_PRIVATE_KEY");
   process.exit(1);

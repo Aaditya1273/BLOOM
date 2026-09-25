@@ -4,6 +4,7 @@ import { ArrowDown, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import type { RiskAsset, RiskSnapshot } from "@/lib/types";
 import { MAINNET_CHAIN_ID, useConfig, useQuery } from "@/hooks/use-api";
+import { useAuth } from "@/hooks/use-auth";
 import { age, pct, RISK_LABEL, usd } from "@/lib/format";
 import { BloomCard, PageHero, SectionHeader } from "@/components/bloom/card";
 import { RiskMetric, RiskState } from "@/components/bloom/risk";
@@ -112,6 +113,7 @@ function HowItWorks({ engine }: { engine?: string }) {
 }
 
 export default function RiskPage() {
+  const { role } = useAuth();
   const risk = useQuery(api.risk, 3000);
   const health = useQuery(api.health);
   const config = useConfig();
@@ -136,7 +138,8 @@ export default function RiskPage() {
 
       {risk.error != null && !risk.data && <ErrorState error={risk.error} onRetry={risk.reload} className="mb-6" />}
 
-      {config && config.chainId !== MAINNET_CHAIN_ID && assets.length > 0 && (
+      {/* admin-only: the backend enforces this too (403 for non-admin sessions) */}
+      {role === "admin" && config && config.chainId !== MAINNET_CHAIN_ID && assets.length > 0 && (
         <DemoControls symbols={assets.map((a) => a.symbol)} onDone={risk.reload} />
       )}
 

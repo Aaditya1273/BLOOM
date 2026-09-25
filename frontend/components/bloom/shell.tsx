@@ -5,11 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { MotionConfig } from "framer-motion";
 import * as Popover from "@radix-ui/react-popover";
 import { ChevronDown, Clock3, House, LogOut, MessageCircle, ShieldCheck, Sparkles, Target, TriangleAlert, Wallet } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Toaster } from "sonner";
-import { api, setApiOwner } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@/hooks/use-api";
 import { shortHash } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -231,7 +232,7 @@ function Footer({ withTabs }: { withTabs: boolean }) {
   );
 }
 
-/** Shown on app routes while the wallet reconnects after a reload. */
+/** Shown on app routes while the wallet reconnects or the session is being checked. */
 function GateLoading() {
   return (
     <div className="grid min-h-[60vh] place-items-center" role="status" aria-live="polite">
@@ -243,22 +244,67 @@ function GateLoading() {
   );
 }
 
+/** Connected but not signed in: one EIP-712 signature (no transaction, no gas) proves wallet ownership. */
+function SignInPanel() {
+  const { status, error, signIn } = useAuth();
+  const { disconnect } = useDisconnect();
+  const signing = status === "signing";
+  return (
+    <div className="mx-auto grid min-h-[60vh] max-w-md place-items-center text-center">
+      <div>
+        <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-pink-soft">
+          <BloomMark size={30} />
+        </span>
+        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.02em]">Sign in to Bloom</h1>
+        <p className="mt-2 text-[15px] leading-relaxed text-muted">
+          Your wallet will ask you to sign a message. It proves this wallet is yours. It doesn&apos;t send a transaction or cost gas.
+        </p>
+        {error && (
+          <p role="alert" className="mt-4 rounded-control bg-danger-soft px-4 py-3 text-sm text-danger-text">
+            {error}
+          </p>
+        )}
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <button type="button" onClick={() => void signIn()} disabled={signing} className={buttonClass("primary", "lg", "min-w-56")}>
+            {signing ? "Check your wallet…" : error ? "Try again" : "Sign in with wallet"}
+          </button>
+          <button type="button" onClick={() => disconnect()} className="text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
+            Disconnect
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
- * Wallet gate. The landing page ("/") and claim links are public; every app route needs a connected wallet.
- * The connected address is the owner for every API call. Disconnecting returns to the landing page.
+ * Wallet gate. The landing page ("/") and claim links are public; every app route needs a connected wallet AND a
+ * verified sign-in. Disconnecting returns to the landing page.
  */
 function useWalletGate(appRoute: boolean) {
-  const { address, status } = useAccount();
+  const { status } = useAccount();
+  const auth = useAuth();
   const router = useRouter();
-  // set synchronously so the first queries of child screens already act for this wallet
-  setApiOwner(status === "connected" ? address : undefined);
   const [mounted, setMounted] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client mount flag (wallet state is client-only)
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (appRoute && mounted && status === "disconnected") router.replace("/");
   }, [appRoute, mounted, status, router]);
-  return mounted && status === "connected";
+  // ask for the signature once, right after the wallet connects
+  const prompted = useRef(false);
+  useEffect(() => {
+    if (!appRoute || status !== "connected") {
+      prompted.current = false;
+      return;
+    }
+    if (auth.status === "needs-signin" && !auth.error && !prompted.current) {
+      prompted.current = true;
+      void auth.signIn();
+    }
+  }, [appRoute, status, auth]);
+  if (!mounted || status !== "connected" || auth.status === "checking" || auth.status === "disconnected") return "loading" as const;
+  return auth.status === "authenticated" ? ("open" as const) : ("signin" as const);
 }
 
 export function BloomShell({ children }: { children: ReactNode }) {
@@ -267,13 +313,13 @@ export function BloomShell({ children }: { children: ReactNode }) {
   const claim = pathname.startsWith("/claim");
   const appRoute = !landing && !claim;
   const chat = pathname.startsWith("/chat");
-  const unlocked = useWalletGate(appRoute);
+  const gate = useWalletGate(appRoute);
   return (
     <MotionConfig reducedMotion="user">
       {/* the landing page renders its own transparent-over-hero navigation */}
       {landing ? null : claim ? <PublicTopBar /> : <AppTopBar />}
       <main className={cn("w-full flex-1", landing ? "" : cn("mx-auto max-w-[1200px] pt-8 sm:pt-12", PAGE_X))}>
-        {appRoute && !unlocked ? <GateLoading /> : children}
+        {!appRoute || gate === "open" ? children : gate === "signin" ? <SignInPanel /> : <GateLoading />}
       </main>
       {!chat && <Footer withTabs={appRoute} />}
       {appRoute && <BottomTabs />}

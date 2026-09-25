@@ -48,10 +48,16 @@
   },
   "riskEngineImpl": "stylus",
   "roles": {
-    "admin": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954",
-    "reporter": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954",
-    "claimAuthority": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954"
+    "admin": "0xaC0eb94915487d7EE0155f7C49857258626E4c00",
+    "reporter": "0x87D15cAdb881e71c4996E0A908F457b2887adDaa",
+    "agent": "0x04d0fe2b50d797B742F852eabF39FA439f6935C7",
+    "claimAuthority": "0x89dF16bc96D5eb1DCa8778E5286C5e47451887B0",
+    "demoOwner": "0x785E1825b1F093216B80450a9acFb7b87EFA0E80",
+    "faucet": "0x33d6684E21980f00E29C14F9B289EAe502E04b18",
+    "mockOracle": "0x82c2B3Ce1773e3b6b4590Ad329D37Ee59fC3A340",
+    "deployer": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954 (retired: no roles; former single key, treat as compromised)"
   },
   "network": "robinhoodTestnet",
-  "deployedAt": "2026-09-24T21:09:39.621Z"
+  "deployedAt": "2026-09-24T21:09:39.621Z",
+  "rolesRotatedAt": "2026-09-25T10:43:42.269Z"
 }

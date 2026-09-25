@@ -2,7 +2,7 @@
 // A throwaway wallet plays the RainbowKit user: the backend never holds its key, so every owner action comes back as a
 // sign request that this script signs, exactly like the frontend's useWalletSign hook.
 //   BLOOM_DEPLOYMENT=robinhood-testnet node scripts/wallet-flow-smoke.ts
-// The deployer key (DEPLOYER_PRIVATE_KEY / PRIVATE_KEY) funds the throwaway wallet with a little gas.
+// The testnet FAUCET key (which already sponsors new Bloom users) funds the throwaway wallet with a little gas.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,19 +17,22 @@ dotenv.config({ path: join(ROOT, ".env"), quiet: true });
 const API = process.env.API_URL ?? "http://localhost:3001";
 const dep = JSON.parse(readFileSync(join(ROOT, "deployments", `${process.env.BLOOM_DEPLOYMENT ?? "localhost"}.json`), "utf8"));
 const rpc = dep.chainId === 31337 ? "http://127.0.0.1:8545" : process.env.RH_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com";
-const provider = new JsonRpcProvider(rpc, dep.chainId, { staticNetwork: true });
-const rawKey = process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
-if (!rawKey) throw new Error("Set DEPLOYER_PRIVATE_KEY or PRIVATE_KEY to fund the test wallet");
+const provider = new JsonRpcProvider(rpc, dep.chainId, { staticNetwork: true, cacheTimeout: -1 }); // no cached nonces between fast sends
+// local chain: public Hardhat dev account #0 (like the backend); testnet: the faucet key
+const rawKey = dep.chainId === 31337 ? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" : process.env.FAUCET_PRIVATE_KEY;
+if (!rawKey) throw new Error("Set FAUCET_PRIVATE_KEY (testnet gas sponsor) to fund the test wallet");
 const funder = new Wallet(rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`, provider);
 const user = Wallet.createRandom().connect(provider);
 
 let n = 0;
+let token = "";
 const ok = (label: string, detail = "") => console.log(`✔ ${String(++n).padStart(2)} ${label}${detail ? `  — ${detail}` : ""}`);
 async function call(path: string, body?: object) {
-  const res = await fetch(`${API}${path}${body ? "" : `${path.includes("?") ? "&" : "?"}owner=${user.address}`}`, {
+  // identity comes only from the signed-in session token (no owner field)
+  const res = await fetch(`${API}${path}`, {
     method: body ? "POST" : "GET",
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify({ ...body, owner: user.address }) : undefined,
+    headers: { ...(body ? { "content-type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json();
   if (!res.ok) throw new Error(`${path} ${res.status}: ${JSON.stringify(json)}`);
@@ -50,8 +53,15 @@ async function sign(req: any): Promise<string[]> {
 
 (async () => {
   console.log(`user wallet ${user.address} on chain ${dep.chainId}`);
-  await (await funder.sendTransaction({ to: user.address, value: parseEther("0.0004") })).wait();
+  // ~6 wallet txs cost ~0.000007 ETH at testnet gas prices; WALLET_FLOW_GAS_ETH overrides
+  await (await funder.sendTransaction({ to: user.address, value: parseEther(process.env.WALLET_FLOW_GAS_ETH ?? (dep.chainId === 31337 ? "0.05" : "0.00005")) })).wait();
   ok("gas for the test wallet", `${formatEther(await provider.getBalance(user.address))} ETH`);
+
+  const nonce = await call(`/api/auth/nonce?wallet=${user.address}`);
+  if (nonce.domain.chainId !== dep.chainId) throw new Error("sign-in challenge is for the wrong chain");
+  const signed = await call("/api/auth/verify", { message: nonce.message, signature: await user.signTypedData(nonce.domain, nonce.types, nonce.message) });
+  token = signed.token;
+  ok("wallet signed in (EIP-712 challenge)", `session for ${signed.wallet.slice(0, 10)}…, role ${signed.role}`);
 
   const f = await call("/api/faucet", {});
   ok("faucet (backend sponsors the Bloom account, mints test USDG)", `tx ${f.txHash.slice(0, 10)}…`);

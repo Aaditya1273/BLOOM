@@ -57,7 +57,7 @@ export function createReporter(opts: ReporterOptions) {
   const provider = new JsonRpcProvider(opts.rpcUrl, dep.chainId, { staticNetwork: true, cacheTimeout: -1 }); // no request cache: nonces must be fresh
   const reporter = new Wallet(opts.reporterKey, provider);
   const feedAdmin = mode === "testnet-mock" && opts.feedAdminKey ? new Wallet(opts.feedAdminKey, provider) : null;
-  if (mode === "testnet-mock" && !feedAdmin) throw new Error("testnet-mock mode needs FEED_ADMIN_PRIVATE_KEY");
+  if (mode === "testnet-mock" && !feedAdmin) throw new Error("testnet-mock mode needs MOCK_ORACLE_PRIVATE_KEY");
   const engineAddr = dep.contracts.BloomRiskEngine;
   const engine = new Contract(engineAddr, abi("BloomRiskEngineEVM"), reporter);
   const stocks = Object.entries(dep.assets).filter(([, a]) => a.kind === "STOCK_TOKEN").map(([s]) => s);
@@ -98,7 +98,7 @@ export function createReporter(opts: ReporterOptions) {
     const txHash = await send(reporter, `submitReport ${sym}`, () =>
       engine.submitReport(r.asset, r.halted, r.corporateActionPaused, r.uiMultiplier, r.referencePrice, r.observedAt, r.nonce, sig));
     log.info("report", { symbol: sym, halted: r.halted, corporateActionPaused: r.corporateActionPaused,
-      uiMultiplier: r.uiMultiplier, referencePrice: r.referencePrice, observedAt: r.observedAt, nonce: r.nonce, signature: sig, txHash });
+      uiMultiplier: r.uiMultiplier, referencePrice: r.referencePrice, observedAt: r.observedAt, nonce: r.nonce, txHash });
     return txHash;
   }
 

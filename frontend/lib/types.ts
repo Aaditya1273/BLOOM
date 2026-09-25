@@ -9,7 +9,10 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "TESTNET_ONLY"
   | "CHAIN_ERROR"
-  | "INTERNAL";
+  | "INTERNAL"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "RATE_LIMITED";
 
 export interface ApiErrorBody {
   error: { code: ErrorCode; message: string; details?: Record<string, unknown> };
@@ -276,3 +279,20 @@ export interface SignRequest {
   };
 }
 export const isSignRequest = (r: unknown): r is SignRequest => typeof r === "object" && r !== null && "sign" in r;
+
+// ── Wallet sign-in (EIP-712)
+export interface AuthChallenge {
+  domain: { name: string; version: string; chainId: number };
+  types: { BloomLogin: { name: string; type: string }[] };
+  primaryType: "BloomLogin";
+  message: {
+    wallet: `0x${string}`;
+    app: string;
+    uri: string;
+    chainId: number;
+    nonce: string;
+    issuedAt: number;
+    expiresAt: number;
+    statement: string;
+  };
+}

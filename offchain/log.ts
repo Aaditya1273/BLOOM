@@ -1,6 +1,7 @@
 // Structured JSON logger with secret redaction. Never pass private keys; redaction is a safety net.
-// Field names whose values are never logged (tx hashes / signatures are fine and stay visible).
-const SECRET_KEY = /^(.*private.*|.*secret.*|.*api_?key.*|password|code|mnemonic|authorization|key)$/i;
+// Field names whose values are never logged: keys, secrets, claim codes, auth tokens/sessions and signatures
+// (a signature can be replayable before it is used). Tx hashes stay visible.
+const SECRET_KEY = /^(.*private.*|.*secret.*|.*api_?key.*|password|code|mnemonic|seed|authorization|cookie|key|.*(auth|access|session|refresh|bearer|api)_?token.*|session|sig|signature|bearer)$/i;
 
 function redact(v: unknown, depth = 0): unknown {
   if (depth > 6) return "[depth]";

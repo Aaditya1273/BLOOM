@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
 import type { Claim } from "@/lib/types";
 import { errorMessage, kindFromError, num, shortDate, shortHash, usd, type ResultKind } from "@/lib/format";
 import { BloomCard } from "./card";
@@ -16,12 +18,13 @@ const CLOSED: Record<Exclude<Claim["status"], "OPEN">, string> = {
 
 const input = "h-12 w-full rounded-control border border-line bg-cream px-4 outline-none transition-colors focus:border-ink disabled:opacity-60";
 
-/** Recipient view of a claim link: what you got, and two fields to claim it. */
+/** Recipient view of a claim link. The asset is paid to the connected, signed-in wallet (never a typed address). */
 export function ClaimCard({ claim, priceUsd, onClaimed }: { claim: Claim; priceUsd?: number; onClaimed?: () => void }) {
-  const [recipient, setRecipient] = useState("");
+  const auth = useAuth();
+  const { openConnectModal } = useConnectModal();
   const [code, setCode] = useState("");
   const [result, setResult] = useState<{ kind: ResultKind; message?: string; txHash?: string } | null>(null);
-  const validAddr = /^0x[0-9a-fA-F]{40}$/.test(recipient);
+  const signedIn = auth.status === "authenticated";
   const validCode = /^\d{6}$/.test(code);
   const pending = result?.kind === "pending";
   const done = result?.kind === "success";
@@ -30,10 +33,10 @@ export function ClaimCard({ claim, priceUsd, onClaimed }: { claim: Claim; priceU
 
   async function redeem(e: React.FormEvent) {
     e.preventDefault();
-    if (!validAddr || !validCode || pending || done) return;
+    if (!signedIn || !validCode || pending || done) return;
     setResult({ kind: "pending" });
     try {
-      const r = await api.redeem(claim.claimId, recipient, code);
+      const r = await api.redeem(claim.claimId, code);
       setResult({ kind: "success", txHash: r.txHash });
       onClaimed?.();
     } catch (err) {
@@ -58,20 +61,23 @@ export function ClaimCard({ claim, priceUsd, onClaimed }: { claim: Claim; priceU
         </p>
       ) : (
         <form onSubmit={redeem} className="mt-8 space-y-4">
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Your wallet address</span>
-            <input
-              className={`${input} font-mono text-sm`}
-              placeholder="0x…"
-              autoComplete="off"
-              spellCheck={false}
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value.trim())}
-              disabled={done}
-              aria-invalid={recipient.length > 0 && !validAddr}
-            />
-            {recipient.length > 0 && !validAddr && <span className="mt-1 block text-sm text-muted">Enter a full 0x address (42 characters).</span>}
-          </label>
+          <div className="rounded-control bg-sunken/60 p-4 text-sm">
+            <p className="font-medium">Paid to your connected wallet</p>
+            {signedIn ? (
+              <p className="mt-0.5 font-mono text-xs text-muted">{auth.wallet}</p>
+            ) : auth.status === "disconnected" ? (
+              <button type="button" onClick={openConnectModal} className="mt-2 font-medium text-ink underline underline-offset-4">
+                Connect a wallet to claim
+              </button>
+            ) : (
+              <>
+                {auth.error && <p className="mt-1 text-danger-text">{auth.error}</p>}
+                <button type="button" onClick={() => void auth.signIn()} disabled={auth.status === "signing"} className="mt-2 font-medium text-ink underline underline-offset-4">
+                  {auth.status === "signing" ? "Check your wallet…" : "Sign in with your wallet to claim"}
+                </button>
+              </>
+            )}
+          </div>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium">6-digit code</span>
             <input
@@ -92,7 +98,7 @@ export function ClaimCard({ claim, priceUsd, onClaimed }: { claim: Claim; priceU
               Claimed. The {claim.symbol} is on its way to your wallet.
             </p>
           )}
-          <BloomButton type="submit" size="lg" className="w-full" disabled={!validAddr || !validCode} loading={pending} success={done && "Claimed"}>
+          <BloomButton type="submit" size="lg" className="w-full" disabled={!signedIn || !validCode} loading={pending} success={done && "Claimed"}>
             {pending ? "Claiming…" : "Claim asset"}
           </BloomButton>
         </form>

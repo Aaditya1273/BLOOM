@@ -12,11 +12,10 @@ installFetchTransport(FetchRequest);
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DATA_DIR = process.env.BLOOM_DATA_DIR ?? join(ROOT, "backend", "data");
-// .env.local first (first value wins), then .env. PRIVATE_KEY (with or without 0x) is accepted as the deployer key.
+// .env.local first (first value wins), then .env.
 dotenv.config({ path: join(ROOT, ".env.local"), quiet: true });
 dotenv.config({ path: join(ROOT, ".env"), quiet: true });
 const hex0x = (k?: string) => (k ? (k.trim().startsWith("0x") ? k.trim() : `0x${k.trim()}`) : undefined);
-if (!process.env.DEPLOYER_PRIVATE_KEY && process.env.PRIVATE_KEY) process.env.DEPLOYER_PRIVATE_KEY = hex0x(process.env.PRIVATE_KEY);
 export const log = makeLogger("backend");
 const env = process.env;
 
@@ -43,31 +42,74 @@ export const RPC_URL =
       ? "http://127.0.0.1:8545"
       : env.RH_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
 if (!RPC_URL) throw new Error("No RPC URL: set RH_TESTNET_RPC_URL / RH_MAINNET_RPC_URL / RPC_URL");
-export const provider = new JsonRpcProvider(RPC_URL, chainId, { staticNetwork: true, cacheTimeout: -1 }); // no request cache: nonces must be fresh
+// 20 s per RPC request (ethers' default is 5 min, which turns a throttled public RPC into hung API requests)
+const rpcRequest = new FetchRequest(RPC_URL!);
+rpcRequest.timeout = Number(process.env.RPC_TIMEOUT_MS ?? 20_000);
+export const provider = new JsonRpcProvider(rpcRequest, chainId, { staticNetwork: true, cacheTimeout: -1 }); // no request cache: nonces must be fresh
+
+/** True for RPC transport problems (timeouts, throttling, unreachable node) as opposed to contract/logic errors. */
+export function isRpcFailure(e: unknown): boolean {
+  const m = String((e as { message?: string })?.message ?? "");
+  return (
+    isError(e as any, "TIMEOUT") || isError(e as any, "NETWORK_ERROR") || isError(e as any, "SERVER_ERROR") ||
+    /exceeded maximum retry limit|timeout|ECONNREFUSED|ECONNRESET|fetch failed|429|Too Many Requests/i.test(m)
+  );
+}
 
 // Well-known PUBLIC Hardhat dev keys. Used only when the deployment is chain 31337.
 const HH = {
-  deployer: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", // #0 admin / feed admin / minter
+  deployer: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", // #0 local admin / mock oracle / faucet
   reporter: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d", // #1
   claimAuthority: "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a", // #2
   demoOwner: "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba", // #5
   agent: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e", // #6
 };
-// local: public Hardhat dev keys. testnet: a dedicated key if set, otherwise the deployer key (single-key testnet
-// setup). mainnet: only explicitly configured keys, never a fallback.
-const key = (name: string, local?: string) =>
-  hex0x(env[name]) || (LOCAL ? local : MAINNET ? undefined : hex0x(env.DEPLOYER_PRIVATE_KEY));
+/**
+ * Key separation: every role reads its OWN variable. There is no fallback to PRIVATE_KEY or the deployer key on any
+ * network except local Hardhat (public dev keys). The backend never loads DEPLOYER_PRIVATE_KEY or ADMIN_PRIVATE_KEY.
+ *   REPORTER_PRIVATE_KEY         signs EIP-712 market reports (risk engine reporter allowlist only)
+ *   AGENT_PRIVATE_KEY            Bloom Agent session key (acts only inside each goal's onchain BloomPolicy)
+ *   CLAIM_AUTHORITY_PRIVATE_KEY  signs BloomClaims ClaimAuthorization + relays claims
+ *   DEMO_OWNER_PRIVATE_KEY       testnet only, optional: owner of a demo BloomAccount (used by smoke scripts)
+ *   FAUCET_PRIVATE_KEY           testnet only: MockUSDG MINTER_ROLE + sponsors BloomAccount creation gas
+ *   MOCK_ORACLE_PRIVATE_KEY      testnet only: FEED_ADMIN on mock feeds/sequencer + CORP_ACTION on mock Stock Tokens
+ */
+// local Hardhat always uses the public dev keys (testnet role keys in .env.local have no local ETH/roles)
+const key = (name: string, local?: string) => (LOCAL ? local : hex0x(env[name]));
 const wallet = (k?: string) => (k ? new Wallet(k, provider) : null);
 
 export const keys = {
   reporter: key("REPORTER_PRIVATE_KEY", HH.reporter),
-  feedAdmin: key("FEED_ADMIN_PRIVATE_KEY") || key("DEPLOYER_PRIVATE_KEY", HH.deployer),
+  feedAdmin: MAINNET ? undefined : key("MOCK_ORACLE_PRIVATE_KEY", HH.deployer),
 };
-// Owner / faucet keys are never loaded on mainnet: those operations are testnet-only.
+// Owner / faucet / mock-oracle keys are never loaded on mainnet: those operations are testnet-only.
 export const demoOwner = MAINNET ? null : wallet(key("DEMO_OWNER_PRIVATE_KEY", HH.demoOwner));
-export const minter = MAINNET ? null : wallet(key("MINTER_PRIVATE_KEY") || key("DEPLOYER_PRIVATE_KEY", HH.deployer));
-export const agentKey = wallet(key("AGENT_SESSION_PRIVATE_KEY", HH.agent));
+export const minter = MAINNET ? null : wallet(key("FAUCET_PRIVATE_KEY", HH.deployer));
+export const agentKey = wallet(key("AGENT_PRIVATE_KEY", HH.agent));
 export const claimAuthority = wallet(key("CLAIM_AUTHORITY_PRIVATE_KEY", HH.claimAuthority));
+
+/** Refuse to run with shared keys: each role must be a distinct key, and none may be the deployer/admin key. */
+export function assertKeySeparation(): void {
+  if (LOCAL) return;
+  const roles: [string, string | undefined][] = [
+    ["REPORTER", keys.reporter],
+    ["AGENT", agentKey?.privateKey],
+    ["CLAIM_AUTHORITY", claimAuthority?.privateKey],
+    ["DEMO_OWNER", demoOwner?.privateKey],
+    ["FAUCET", minter?.privateKey],
+    ["MOCK_ORACLE", keys.feedAdmin],
+  ];
+  const forbidden = [hex0x(env.DEPLOYER_PRIVATE_KEY), hex0x(env.ADMIN_PRIVATE_KEY), hex0x(env.PRIVATE_KEY)].filter(Boolean).map((k) => k!.toLowerCase());
+  const seen = new Map<string, string>();
+  for (const [role, k] of roles) {
+    if (!k) continue;
+    const norm = k.toLowerCase();
+    if (forbidden.includes(norm)) throw new Error(`Key separation violated: ${role} uses the deployer/admin key. Give ${role} its own key.`);
+    const other = seen.get(norm);
+    if (other) throw new Error(`Key separation violated: ${role} and ${other} share one key. Every role needs a distinct key.`);
+    seen.set(norm, role);
+  }
+}
 
 const abi = (name: string) => JSON.parse(readFileSync(join(ROOT, "offchain", "abi", `${name}.json`), "utf8"));
 export const ABI = {
@@ -94,7 +136,7 @@ export const erc20 = (token: string) => new Contract(token, ABI.stock, provider)
 
 // ─── errors ───
 export type ErrorCode = "RISK_BLOCKED" | "POLICY_REJECTED" | "UNSUPPORTED_ASSET" | "INSUFFICIENT_BALANCE" | "BAD_REQUEST"
-  | "NOT_FOUND" | "TESTNET_ONLY" | "CHAIN_ERROR" | "INTERNAL";
+  | "NOT_FOUND" | "TESTNET_ONLY" | "CHAIN_ERROR" | "INTERNAL" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED";
 export class ApiError extends Error {
   status: number;
   code: ErrorCode;
@@ -144,17 +186,26 @@ function decodeRevert(e: unknown): string {
   return (e as any)?.shortMessage ?? (e as Error)?.message ?? String(e);
 }
 
-/** Send with a per-key lock, wait for the receipt, map failures to CHAIN_ERROR. */
+const TX_WAIT_MS = Number(process.env.TX_WAIT_MS ?? 90_000);
+
+/** Send with a per-key lock, wait (bounded) for the receipt, map failures to CHAIN_ERROR. */
 export async function sendTx(signer: Wallet, label: string, fn: () => Promise<any>) {
   return withLock(signer.address, async () => {
+    let hash: string | undefined;
     try {
       const tx = await fn();
-      const rc = await tx.wait();
+      hash = tx.hash;
+      // bounded: a stalled RPC must not hold the request (and this key's lock) forever
+      const rc = await tx.wait(1, TX_WAIT_MS);
       if (!rc || rc.status !== 1) fail(502, "CHAIN_ERROR", `${label} reverted onchain.`, { txHash: tx.hash });
       log.info("tx", { label, txHash: tx.hash, from: signer.address });
       return rc!;
     } catch (e) {
       if (e instanceof ApiError) throw e;
+      if (hash && isError(e as any, "TIMEOUT")) {
+        log.warn("tx pending", { label, txHash: hash });
+        return fail(504, "CHAIN_ERROR", `${label} was sent but is not confirmed yet. Check the transaction before retrying.`, { txHash: hash, pending: true });
+      }
       const reason = decodeRevert(e);
       log.warn("tx failed", { label, reason });
       return fail(502, "CHAIN_ERROR", `${label} failed: ${reason}`, { reason });

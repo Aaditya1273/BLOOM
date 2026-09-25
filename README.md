@@ -133,12 +133,13 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 ### Run the app against the live testnet
 
 ```bash
-# .env.local at the repo root (gitignored):  PRIVATE_KEY=<funded testnet key>  WALLET_CONNECT_PROJECT_ID=<reown id>
+# .env.local at the repo root (gitignored): one key per role (node scripts/generate-role-keys.js) + WALLET_CONNECT_PROJECT_ID
 cd backend && npm install && BLOOM_DEPLOYMENT=robinhood-testnet npm start   # API + halt-aware reporter
 cd frontend && npm install && npm run dev                                   # http://localhost:3000
 ```
 
-Open the landing page and press **Try Bloom**. RainbowKit asks you to connect a wallet, and connecting unlocks the app;
+Open the landing page and press **Try Bloom**. RainbowKit asks you to connect a wallet, then your wallet signs a one-time
+sign-in message (EIP-712, no gas) and the app unlocks;
 the nav shows your wallet. Your wallet owns your Bloom smart account and signs every owner action (save, invest,
 create or turn off a goal). The backend only prepares those transactions and never holds your key. The Bloom Agent
 acts only through its limited session key, inside your onchain goal policy. Disconnecting returns you to the landing

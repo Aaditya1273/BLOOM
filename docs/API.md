@@ -2,14 +2,21 @@
 
 Base URL: `http://localhost:3001` (env `PORT`). JSON in/out. All amounts are **decimal strings** in human units
 (e.g. `"100"` USDG, `"0.0087"` QQQ) unless the field name ends in `Raw` (integer string in token base units).
-Errors: HTTP 4xx/5xx with `{ "error": { "code": "RISK_BLOCKED" | "POLICY_REJECTED" | "UNSUPPORTED_ASSET" | "INSUFFICIENT_BALANCE" | "BAD_REQUEST" | "NOT_FOUND" | "TESTNET_ONLY" | "CHAIN_ERROR" | "INTERNAL", "message": "plain English", "details"?: {} } }`.
+Errors: HTTP 4xx/5xx with `{ "error": { "code": "RISK_BLOCKED" | "POLICY_REJECTED" | "UNSUPPORTED_ASSET" | "INSUFFICIENT_BALANCE" | "BAD_REQUEST" | "NOT_FOUND" | "TESTNET_ONLY" | "CHAIN_ERROR" | "UNAUTHORIZED" | "FORBIDDEN" | "RATE_LIMITED" | "INTERNAL", "message": "plain English", "details"?: {} } }`.
 
-Identity model for the testnet demo: the backend operates a **demo owner EOA** (`DEMO_OWNER_PRIVATE_KEY`, testnet only)
-that owns a BloomAccount smart account. `owner` params default to the demo owner when omitted. The Bloom Agent uses a
-separate **session key** (`AGENT_SESSION_PRIVATE_KEY`) that is only useful within onchain BloomPolicy limits.
+**Identity.** Every account endpoint acts for the wallet of the signed-in session, never for a supplied address:
+- `GET /api/auth/nonce?wallet=0x..` → `{ domain, types, primaryType: "BloomLogin", message }` (EIP-712 challenge, 5 min, single use)
+- `POST /api/auth/verify { message, signature }` → `{ token, wallet, role: "user"|"admin", expiresAt }`
+- `GET /api/auth/me` → `{ wallet, role, expiresAt }` · `POST /api/auth/logout` revokes the token
+- Send `Authorization: Bearer <token>`. Without it: 401 `UNAUTHORIZED`. An `owner`/`recipient` field that differs from
+  the session wallet: 403 `FORBIDDEN`. `owner` fields in the endpoints below are optional and only checked, never trusted.
+- Owner actions return a **sign request** `{ sign: { chainId, label, txs: [{ to, data }], next? } }` that the wallet signs.
+- `POST /api/risk/simulate` is admin-only (onchain `DEFAULT_ADMIN_ROLE` on BloomVault, or `ADMIN_ADDRESSES`).
+- The agent uses its own policy-scoped session key (`AGENT_PRIVATE_KEY`).
 
 ## System
-- `GET /api/health` → `{ ok, chainId, network, block, riskEngineImpl: "stylus"|"evm-reference", demoMode: boolean }`
+- `GET /api/health` → `{ ok, chainId, network, block, riskEngineImpl: "stylus"|"evm-reference", reporter }`
+- `GET /api/health/chain` → `{ ok, chainId, rpcChainId, rpcReachable, rpcLatencyMs, latestBlock, latestBlockTime, riskEngine: { address, impl }, rpcHost }`
 - `GET /api/config` → `{ chainId, explorer, contracts: {...}, assets: [{ symbol, token, decimals, kind: "STABLE"|"STOCK_TOKEN" }] }`
 
 ## Account / portfolio

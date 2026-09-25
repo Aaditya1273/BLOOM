@@ -5,6 +5,7 @@ import { useAccount, useConfig, useSwitchChain, useSendTransaction } from "wagmi
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { api, ApiError } from "@/lib/api";
 import { isSignRequest, type SignRequest } from "@/lib/types";
+import { APP_CHAIN } from "@/lib/wallet";
 
 /**
  * Completes owner actions with the connected wallet. When the backend returns a SignRequest (it never holds user keys),
@@ -20,11 +21,14 @@ export function useWalletSign() {
   const signAll = useCallback(
     async (req: SignRequest): Promise<string[]> => {
       const target = req.sign.chainId;
+      // chain safety: only ever sign for the chain this app is configured for, never silently for another
+      if (target !== APP_CHAIN.id) throw new ApiError("CHAIN_ERROR", `Refusing to sign for chain ${target}: Bloom runs on ${APP_CHAIN.name}.`, 0);
       if (chainId !== target) await switchChainAsync({ chainId: target });
       const hashes: string[] = [];
       for (const tx of req.sign.txs) {
         const hash = await sendTransactionAsync({ to: tx.to, data: tx.data, value: 0n, chainId: target });
-        const rc = await waitForTransactionReceipt(config, { hash, chainId: target });
+        // bounded, so a stalled RPC can't leave the UI "confirming" forever
+        const rc = await waitForTransactionReceipt(config, { hash, chainId: target, timeout: 120_000 });
         if (rc.status !== "success") throw new ApiError("CHAIN_ERROR", "The transaction reverted onchain.", 0);
         hashes.push(hash);
       }

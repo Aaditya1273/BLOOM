@@ -11,16 +11,20 @@ export const robinhoodTestnet = defineChain({
   testnet: true,
 });
 
-/** Local Hardhat node, for development only (NEXT_PUBLIC_CHAIN_ID=31337). */
-export const hardhatLocal = defineChain({
-  id: 31337,
-  name: "Local Hardhat",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
-  testnet: true,
-});
-
-export const APP_CHAIN = process.env.NEXT_PUBLIC_CHAIN_ID === "31337" ? hardhatLocal : robinhoodTestnet;
+/**
+ * The single chain this build talks to. NEXT_PUBLIC_CHAIN_ID is inlined at build time, so the local Hardhat branch
+ * (dev only, NEXT_PUBLIC_CHAIN_ID=31337) is dropped from production testnet bundles: no localhost dependency ships.
+ */
+export const APP_CHAIN =
+  process.env.NEXT_PUBLIC_CHAIN_ID === "31337"
+    ? defineChain({
+        id: 31337,
+        name: "Local Hardhat",
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+        rpcUrls: { default: { http: ["http://127.0.0.1:8545"] } },
+        testnet: true,
+      })
+    : robinhoodTestnet;
 
 export const WALLETCONNECT_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 

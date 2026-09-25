@@ -116,20 +116,30 @@ export async function accountView(owner: string) {
   };
 }
 
-// ─── faucet (testnet only, 1/day/owner) ───
+// ─── faucet (TESTNET_DEMO_ONLY: authenticated wallet, own account only, fixed amount, 1/day/wallet, global daily cap) ───
 const faucetStore = jsonStore<Record<string, number>>("faucet", {});
 export const FAUCET_AMOUNT = "1000";
-export async function faucet(owner: string, amount = FAUCET_AMOUNT, oncePerDay = true) {
+const FAUCET_DAILY_CAP = Number(process.env.FAUCET_DAILY_CAP ?? 100);
+const DAY_MS = 86_400_000;
+export async function faucet(owner: string) {
   requireTestnet("The faucet");
-  if (!minter) fail(503, "INTERNAL", "No faucet minter key configured.");
+  if (!minter) fail(503, "INTERNAL", "No faucet key configured (FAUCET_PRIVATE_KEY).");
   const k = owner.toLowerCase();
-  const last = faucetStore.get()[k] ?? 0;
-  if (oncePerDay && Date.now() - last < 86_400_000) fail(429, "BAD_REQUEST", "Faucet already used today for this owner. Try again tomorrow.");
-  const account = await ensureAccount(owner);
-  const usdg = new Contract(USDG.token, ABI.usdg, minter);
-  const rc = await sendTx(minter!, "faucet mint", () => usdg.mint(account, parseUnits(amount, USDG.decimals)));
-  if (oncePerDay) faucetStore.update((d) => { d[k] = Date.now(); });
-  return { txHash: rc.hash, amount };
+  const now = Date.now();
+  const all = faucetStore.get();
+  if (now - (all[k] ?? 0) < DAY_MS) fail(429, "RATE_LIMITED", "Faucet already used today for this wallet. Try again tomorrow.");
+  const today = Object.entries(all).filter(([w, t]) => !w.startsWith("_") && now - t < DAY_MS).length;
+  if (today >= FAUCET_DAILY_CAP) fail(429, "RATE_LIMITED", "The testnet faucet reached today's limit. Try again tomorrow.");
+  faucetStore.update((d) => { d[k] = now; }); // reserve before the tx so parallel requests can't double-mint
+  try {
+    const account = await ensureAccount(owner); // mints only into the caller's own Bloom account
+    const usdg = new Contract(USDG.token, ABI.usdg, minter);
+    const rc = await sendTx(minter!, "faucet mint", () => usdg.mint(account, parseUnits(FAUCET_AMOUNT, USDG.decimals)));
+    return { txHash: rc.hash, amount: FAUCET_AMOUNT };
+  } catch (e) {
+    faucetStore.update((d) => { delete d[k]; }); // release the reservation if the mint failed
+    throw e;
+  }
 }
 
 // ─── deposit / invest (owner-signed) ───

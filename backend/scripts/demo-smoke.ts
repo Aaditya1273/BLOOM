@@ -2,13 +2,37 @@
 // local/testnet deployment. Exits non-zero on the first failed check.
 //   npm run smoke            (backend must be running: npm start)
 import assert from "node:assert/strict";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
+import { Wallet, type BaseWallet } from "ethers";
 
 const API = process.env.API_URL ?? "http://localhost:3001";
-const RPC = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env.local"), quiet: true });
+// the chain the backend is on (read from the backend below); never read a testnet address from a local node or vice versa
+const LOCAL = (process.env.BLOOM_DEPLOYMENT ?? "localhost") === "localhost";
+const RPC = process.env.RPC_URL ?? (LOCAL ? "http://127.0.0.1:8545" : process.env.RH_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
 let step = 0;
 
-async function call(method: string, path: string, body?: unknown) {
-  const res = await fetch(`${API}${path}`, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+// Everything goes through wallet sign-in. The demo owner acts as the user; the admin wallet runs risk simulations.
+// Local chain: public Hardhat dev keys (#5 demo owner, #0 admin). Testnet: DEMO_OWNER / ADMIN keys from .env.local.
+const HH_DEMO = "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba";
+const HH_ADMIN = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const tokens: Record<string, string> = {};
+async function login(as: string, w: BaseWallet) {
+  const n = await (await fetch(`${API}/api/auth/nonce?wallet=${w.address}`)).json() as any;
+  const signature = await w.signTypedData(n.domain, n.types, n.message);
+  const v = await fetch(`${API}/api/auth/verify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: n.message, signature }) });
+  const b = await v.json() as any;
+  assert.equal(v.status, 200, JSON.stringify(b));
+  tokens[as] = b.token;
+  return b;
+}
+
+async function call(method: string, path: string, body?: unknown, as: string | null = path.startsWith("/api/risk/simulate") ? "admin" : "user") {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (as && tokens[as]) headers.Authorization = `Bearer ${tokens[as]}`;
+  const res = await fetch(`${API}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
   return { status: res.status, body: (await res.json()) as any };
 }
 const ok = async (method: string, path: string, body?: unknown) => {
@@ -29,7 +53,23 @@ const riskOf = async (sym: string) => (await ok("GET", "/api/risk")).assets.find
 const health = await ok("GET", "/api/health");
 assert.equal(health.ok, true);
 assert.notEqual(health.chainId, 4663, "smoke test is testnet/local only");
+const rpcChain = Number(((await (await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) })).json()) as any).result);
+assert.equal(rpcChain, health.chainId, `RPC_URL is chain ${rpcChain} but the backend is on ${health.chainId}`);
 check("health", `chain ${health.chainId}, block ${health.block}, engine ${health.riskEngineImpl}`);
+
+// 0. auth lockdown: no session -> 401; a normal user cannot run admin simulations
+const local = health.chainId === 31337;
+const demoKey = local ? HH_DEMO : process.env.DEMO_OWNER_PRIVATE_KEY;
+const adminKey = local ? HH_ADMIN : process.env.ADMIN_PRIVATE_KEY;
+assert.ok(demoKey && adminKey, "testnet smoke needs DEMO_OWNER_PRIVATE_KEY and ADMIN_PRIVATE_KEY");
+assert.equal((await call("POST", "/api/deposit", { amount: "1" }, null)).status, 401);
+const u = await login("user", new Wallet(demoKey!));
+const a = await login("admin", new Wallet(adminKey!));
+assert.equal(a.role, "admin");
+const denied = await call("POST", "/api/risk/simulate", { symbol: "AAPL", scenario: "HALT" }, "user");
+assert.equal(denied.status, u.role === "admin" ? 200 : 403);
+check("auth lockdown", `unauthenticated -> 401, user simulate -> ${denied.status}, signed in ${u.wallet.slice(0, 10)}… + admin`);
 const cfg = await ok("GET", "/api/config");
 const token = (s: string) => cfg.assets.find((a: any) => a.symbol === s).token;
 
@@ -103,14 +143,18 @@ assert.equal(x2.claim.url, `/claim/${x2.claim.claimId}`);
 const cl = await ok("GET", `/api/claims/${x2.claim.claimId}`);
 assert.equal(cl.status, "OPEN");
 assert.equal(JSON.stringify(cl).includes(x2.claim.code), false, "claim view must not leak the code");
-const jamie = "0x000000000000000000000000000000000000dEaD";
-const wrong = await call("POST", `/api/claims/${x2.claim.claimId}/redeem`, { recipient: jamie, code: x2.claim.code === "000000" ? "111111" : "000000" });
+// Jamie signs in with their own wallet; the claim is paid to that signed-in wallet only
+const jamieWallet = Wallet.createRandom();
+await login("jamie", jamieWallet);
+const jamie = jamieWallet.address;
+const wrong = await call("POST", `/api/claims/${x2.claim.claimId}/redeem`, { code: x2.claim.code === "000000" ? "111111" : "000000" }, "jamie");
 assert.equal(wrong.status, 400);
 const jBefore = await balanceOf(token("NVDA"), jamie);
-const red = await ok("POST", `/api/claims/${x2.claim.claimId}/redeem`, { recipient: jamie, code: x2.claim.code });
+const red = (await call("POST", `/api/claims/${x2.claim.claimId}/redeem`, { code: x2.claim.code }, "jamie")).body;
+assert.ok(red.txHash, JSON.stringify(red));
 assert.ok((await balanceOf(token("NVDA"), jamie)) > jBefore);
 assert.equal((await ok("GET", `/api/claims/${x2.claim.claimId}`)).status, "CLAIMED");
-const again = await call("POST", `/api/claims/${x2.claim.claimId}/redeem`, { recipient: jamie, code: x2.claim.code });
+const again = await call("POST", `/api/claims/${x2.claim.claimId}/redeem`, { code: x2.claim.code }, "jamie");
 assert.equal(again.status, 400);
 check("claim link for unknown recipient", `wrong code rejected, redeemed tx ${red.txHash.slice(0, 10)}…, double-claim rejected`);
 

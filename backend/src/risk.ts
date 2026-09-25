@@ -76,10 +76,22 @@ export async function riskOf(a: AssetInfo) {
 }
 export type AssetRisk = Awaited<ReturnType<typeof riskOf>>;
 
-export async function riskAll() {
+// Every open risk page polls this; cache for 3 s and share one in-flight read so N viewers cost one set of RPC calls.
+// ponytail: per-process cache; fine for one backend instance.
+let riskCache: { at: number; value: Promise<Awaited<ReturnType<typeof readRiskAll>>> } | null = null;
+async function readRiskAll() {
   const [sequencer, list] = await Promise.all([sequencerStatus(), Promise.all(stocks.map(riskOf))]);
   return { sequencer, assets: list.map(({ price1e18, priceTrusted, ...r }) => r) };
 }
+export function riskAll() {
+  if (riskCache && Date.now() - riskCache.at < 3_000) return riskCache.value;
+  const value = readRiskAll();
+  riskCache = { at: Date.now(), value };
+  value.catch(() => { if (riskCache?.value === value) riskCache = null; }); // never cache failures
+  return value;
+}
+/** Invalidate after a state change (e.g. an admin simulation) so the next read is fresh. */
+export const invalidateRisk = () => { riskCache = null; };
 
 export function stockBySymbol(symbol: string): AssetInfo {
   const a = assetBySymbol(symbol);

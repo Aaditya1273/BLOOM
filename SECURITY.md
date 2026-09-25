@@ -38,13 +38,54 @@ Mainnet recommendation: put every owner and admin role behind a multisig with a 
 
 ## Signer model
 
+Each role is a separate key (see `DEPLOYMENT.md` §1). The backend refuses to start if two roles share one.
+
 | Key | Holder | Blast radius if compromised |
 | --- | --- | --- |
-| Deployer / admin | Team (multisig recommended) | Can reconfigure the risk engine and swap the vault adapter. Can't transfer user collateral directly |
+| Deployer | Operator, deploy time only | Nothing after handover: it holds no role (asserted by the deploy script and `test/RoleSeparation.test.js`) |
+| Admin | Team (Safe recommended; testnet: its own EOA) | Can reconfigure the risk engine and swap the vault adapter. Can't transfer user collateral directly |
+| Faucet (testnet only) | Backend | Can mint mock USDG and spend its own gas; never loaded on mainnet |
+| Mock oracle (testnet only) | Backend | Can move mock feed prices and mock corporate actions; never loaded on mainnet |
 | Reporter | Reporter service | Can mark assets halted or normal within the freshness window. Mitigated by rotation (`setReporter(false)`), and the deviation and staleness checks still apply |
 | Claim authority | Backend | Can authorise claiming *open* (not recipient-bound) claims to an arbitrary address before they expire |
 | Agent session key | Backend | Limited to each goal's policy (for example $50/day, allowlisted assets, NORMAL state only), until the goal expires or is revoked |
-| Demo owner (testnet only) | Backend | Only the demo account. The backend refuses to use it on chain 4663 |
+| Demo owner (testnet only) | Smoke scripts | Only the demo account. The backend refuses to load it on chain 4663 |
+
+The first testnet deployment used one key for every role (`0x5aB3…4954`). It is retired, holds no role onchain,
+and must be treated as compromised.
+
+## API authentication and authorization
+
+The backend never trusts an address supplied by the client. Identity comes only from a verified wallet signature:
+
+1. `GET /api/auth/nonce?wallet=` returns an EIP-712 `BloomLogin` challenge: wallet, app id, URI (the configured frontend
+   origin), chainId, a random single-use nonce, issuedAt and expiresAt (5 minutes). Domain `{name: "Bloom", version: "1", chainId}`.
+2. The wallet signs it (no transaction, no gas). `POST /api/auth/verify` recovers the signer and rejects a wrong
+   signature, an expired or future challenge (60 s skew), a reused or unknown nonce (nonces are consumed whatever the outcome),
+   a different chain, a different app/URI (cross-domain replay) or a signer that isn't the challenged wallet.
+3. The response is a random bearer token (valid `SESSION_TTL_SEC`, default 1 h). Only its SHA-256 hash is stored.
+   `POST /api/auth/logout` revokes it; disconnecting the wallet in the UI logs out.
+
+| Class | Endpoints | Rule |
+| --- | --- | --- |
+| Public | `/api/health`, `/api/health/chain`, `/api/config`, `/api/risk`, `/api/agent/metadata`, `/api/auth/nonce`, `/api/auth/verify`, `GET /api/claims/:id` (preview) | Read-only (verify only issues a session), rate-limited |
+| User | `auth/me`, `auth/logout`, account, history, activity, goals (preview, create, activate, revoke), deposit, invest, chat and confirm (sends and claim links are created here), borrow-check, claim redeem, learn | Session required. The wallet comes from the session; a mismatching `owner`/`recipient` in the body or query is 403 |
+| Admin | `/api/risk/simulate` | Session **and** (BloomVault `DEFAULT_ADMIN_ROLE` onchain or `ADMIN_ADDRESSES`). No secret URLs, no hardcoded admin |
+| Testnet demo | `/api/faucet` | Session, chain 46630 only, 1 mint per wallet per day, fixed 1,000 USDG, global daily cap (`FAUCET_DAILY_CAP`) |
+
+Owner actions (deposit, invest, goal creation, activation, revocation) come back as **sign requests** that the user's wallet
+signs; the backend never holds user keys. Sign requests carry the chainId, and the frontend refuses to sign for any
+chain other than the one it is built for (it asks the wallet to switch first, never silently).
+
+**Rate limits** (per IP + wallet, fixed window, `429 RATE_LIMITED` with `Retry-After`): global 300/min, nonce 20/min,
+verify 10/min, reads 120/min, history 60/min, writes 30/min, chat 30/min, faucet 3/hour, claim redeem 10/10 min,
+admin 30/min. Set `TRUST_PROXY` behind a reverse proxy so the real client IP is used.
+
+**Audit log** (structured JSON, `msg: "audit"`): `auth.success`, `auth.failure`, `admin.denied`, `admin.risk_simulation`,
+`faucet.mint`, `agent.execution`, `claim.redeemed`, `claim.redeem_failed`. The logger redacts keys, secrets, signatures,
+tokens, session ids and claim codes by field name; report signatures are no longer logged.
+
+**CORS** allows only the exact `FRONTEND_ORIGIN` list; production startup fails without one.
 
 ## Oracle assumptions
 
@@ -123,6 +164,11 @@ The EntryPoint then enforces expiry.
 - No Robinhood Chain sequencer uptime feed exists. The mainnet sequencer guard is disabled explicitly.
 - Claim-link recipient verification in the demo is a 6-digit code shared out of band (hashed with a salt server-side, attempts limited). Production should use real contact verification.
 - The backend holds the agent session key. A compromised backend can act only within active goal policies.
+- Goals created before the key rotation are bound to the retired key as their session key. Revoke and recreate them.
+- Sessions, nonces and rate-limit counters are in memory: single instance only, and a restart signs everyone out.
+- Sign-in supports EOA signatures only (no ERC-1271 smart-contract wallets yet).
+- The testnet faucet sponsors account-creation gas; many fresh wallets from many IPs could drain the faucet key's ETH (bounded by the daily cap).
+- The Stylus engine's source is not yet verified on the explorer (`DEPLOYMENT.md` §8).
 - ERC-8004 identity is supplementary and plays no part in security decisions.
 
 ## Reporting
