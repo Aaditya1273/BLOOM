@@ -9,6 +9,8 @@ import dotenv from "dotenv";
 import { createReporter, loadDeployment } from "./index.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+// a variable set to "" (hosting dashboards do this for "optional" fields) counts as unset, so defaults apply
+for (const [k, v] of Object.entries(process.env)) if (v !== undefined && v.trim() === "") delete process.env[k];
 dotenv.config({ path: join(ROOT, ".env.local"), quiet: true });
 dotenv.config({ path: join(ROOT, ".env"), quiet: true });
 const hex0x = (k?: string) => (k ? (k.trim().startsWith("0x") ? k.trim() : `0x${k.trim()}`) : undefined);

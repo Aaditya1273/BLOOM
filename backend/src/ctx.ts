@@ -11,6 +11,8 @@ import { makeLogger } from "../../offchain/log.ts";
 installFetchTransport(FetchRequest);
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+// a variable set to "" (hosting dashboards do this for "optional" fields) counts as unset, so defaults apply
+for (const [k, v] of Object.entries(process.env)) if (v !== undefined && v.trim() === "") delete process.env[k];
 export const DATA_DIR = process.env.BLOOM_DATA_DIR ?? join(ROOT, "backend", "data");
 // .env.local first (first value wins), then .env.
 dotenv.config({ path: join(ROOT, ".env.local"), quiet: true });
