@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { ArrowRightLeft, PauseCircle, PiggyBank, Send, Target } from "lucide-react";
 import { api } from "@/lib/api";
-import type { GoalCreated, GoalParams } from "@/lib/types";
+import { isSignRequest, type GoalCreated, type GoalParams } from "@/lib/types";
+import { useWalletSign } from "@/hooks/use-wallet-sign";
 import { useConfig, useQuery } from "@/hooks/use-api";
 import { errorMessage, kindFromError, pct, shortDate, shortHash, type ResultKind } from "@/lib/format";
 import { BloomCard, PageHero, SectionHeader } from "@/components/bloom/card";
@@ -27,6 +28,7 @@ function Field({ label, children, hint }: { label: string; children: React.React
 
 function GoalEditor({ initial, onActivated }: { initial: GoalParams; onActivated: () => void }) {
   const config = useConfig();
+  const { complete } = useWalletSign();
   const [g, setG] = useState<GoalParams>(initial);
   const [result, setResult] = useState<{ kind: ResultKind; message?: string; created?: GoalCreated } | null>(null);
   const set = <K extends keyof GoalParams>(k: K, v: GoalParams[K]) => setG((p) => ({ ...p, [k]: v }));
@@ -40,7 +42,13 @@ function GoalEditor({ initial, onActivated }: { initial: GoalParams; onActivated
     setResult({ kind: "pending" });
     try {
       const r = await api.createGoal(g);
-      setResult({ kind: "success", created: r });
+      let created: GoalCreated;
+      if (isSignRequest(r)) {
+        // your wallet signs: create the goal, then put it on autopilot (binds the limited agent session key)
+        const signed = (await complete(r))!;
+        created = { goalId: signed.goalId ?? "", txHashes: signed.txHashes, sessionKey: signed.sessionKey ?? "", expiresAt: g.deadline };
+      } else created = r;
+      setResult({ kind: "success", created });
       onActivated();
     } catch (e) {
       setResult({ kind: kindFromError(e), message: errorMessage(e) });

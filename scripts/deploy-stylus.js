@@ -3,7 +3,7 @@
 //   node scripts/deploy-stylus.js mainnet   (requires MAINNET_DEPLOY=true, MAINNET_DEPLOY_CONFIRM=YES_I_UNDERSTAND
 //                                            and an estimate below MAINNET_MAX_DEPLOYMENT_USD)
 // The key is read from DEPLOYER_PRIVATE_KEY and handed to cargo-stylus through a 0600 temp file (never argv).
-require("dotenv").config({ quiet: true });
+require("./lib/env");
 require("./lib/ethers-fetch");
 const fs = require("fs");
 const os = require("os");
@@ -20,7 +20,8 @@ const CRATE = path.join(__dirname, "..", "stylus-risk-engine");
 const CARGO = process.env.CARGO || path.join(os.homedir(), ".cargo", "bin", "cargo");
 
 function run(args, keyFile) {
-  const argv = ["stylus", ...args, ...(args[0] === "deploy" ? ["--private-key-path", keyFile] : [])];
+  // key flag goes right after the subcommand: --constructor-args is variadic and would swallow later flags
+  const argv = args[0] === "deploy" ? ["stylus", "deploy", "--private-key-path", keyFile, ...args.slice(1)] : ["stylus", ...args];
   const r = spawnSync(CARGO, argv, { cwd: CRATE, encoding: "utf8" });
   const out = `${r.stdout}\n${r.stderr}`.replace(/\x1b\[[0-9;]*m/g, "");
   if (r.status !== 0) throw new Error(`cargo stylus ${args[0]} failed:\n${out.slice(-2000)}`);
@@ -37,7 +38,8 @@ async function main() {
 
   const keyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "bloom-")), "key");
   fs.writeFileSync(keyFile, process.env.DEPLOYER_PRIVATE_KEY, { mode: 0o600 });
-  const common = ["--endpoint", net.rpc, "--constructor-args", owner, String(net.maxReportAge)];
+  // --no-verify: build natively instead of in the reproducible Docker image (verify later with `cargo stylus verify`)
+  const common = ["--endpoint", net.rpc, "--no-verify", "--constructor-args", owner, String(net.maxReportAge)];
   try {
     const check = run(["check", "--endpoint", net.rpc], keyFile);
     const dataFeeEth = Number(check.match(/wasm data fee:\s*([0-9.]+)\s*ETH/i)?.[1] ?? "NaN");

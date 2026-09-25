@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
-import { Landing } from "./landing";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Bloom — the wallet where dollars become assets and actions",
-  description: "Save in USDG. Send Robinhood Stock Tokens. Let your agent act under your rules.",
-};
-
-export default function WelcomePage() {
-  return <Landing />;
+// The story page now lives at the root.
+export default function Welcome() {
+  redirect("/");
 }

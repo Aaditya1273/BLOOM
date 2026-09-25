@@ -1,0 +1,57 @@
+{
+  "chainId": 46630,
+  "mode": "testnet-mocks",
+  "contracts": {
+    "EntryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+    "BloomAssetRegistry": "0xa850F501b37420000C16Af1B589c67869Cb287c7",
+    "MockUSDG": "0x44EE1b04e58d7e156630eecafE3447Fcb2bA73E9",
+    "MockSequencerUptimeFeed": "0x251EB53886FF648320050fb4Be7357459f99460e",
+    "BloomRiskEngine": "0xc464c03bfe7efa388457b8b392454b99fa18b124",
+    "BloomVault": "0x74b4413B3f8433Ec62469Edd03099a4CFE87fFD8",
+    "MockLendingAdapter": "0xaC003B28FE2da20422fBbFCef70cdFB562C922C7",
+    "StockRouter": "0xCE57171cAF60C59cB4bAe61f5580A53F59433A0c",
+    "MockSwapVenue": "0x1a895320723619D2E3F395ceca27D210A7e59ED3",
+    "BloomClaims": "0x03E75b560021A99BB7DB13A7a9C8e884268AA844",
+    "BloomPolicy": "0xbB70407361baEE36cf6d904585D0332f3bc07FF5",
+    "BloomAccountFactory": "0xca8e103387c15476De7EB190B9f20c8E2c86510A"
+  },
+  "assets": {
+    "USDG": {
+      "token": "0x44EE1b04e58d7e156630eecafE3447Fcb2bA73E9",
+      "decimals": 6,
+      "kind": "STABLE"
+    },
+    "AAPL": {
+      "token": "0x707B9aDC0fc8F656bcc1E9160C6eaEa4A8966Dc3",
+      "feed": "0xA55FDE3977Dd768c6a89000108E969aD791dF1DC",
+      "decimals": 18,
+      "kind": "STOCK_TOKEN"
+    },
+    "NVDA": {
+      "token": "0xbE552A9Bd5389518c6EB3FB97bF7064F43226ce9",
+      "feed": "0x9F073e0483024b21d9572D442b6a64B546b782C5",
+      "decimals": 18,
+      "kind": "STOCK_TOKEN"
+    },
+    "QQQ": {
+      "token": "0x4F7141763FeB5dB91178343d3c894E88992794A3",
+      "feed": "0x401E5B592D1F56f335405079F13d49b81309f82f",
+      "decimals": 18,
+      "kind": "STOCK_TOKEN"
+    },
+    "SPY": {
+      "token": "0x2AF710af85914DEe0AA89017223638367645f6b4",
+      "feed": "0xf39CF4eB806C4C5Cc052a8c7f36F02CD8D7AB7FB",
+      "decimals": 18,
+      "kind": "STOCK_TOKEN"
+    }
+  },
+  "riskEngineImpl": "stylus",
+  "roles": {
+    "admin": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954",
+    "reporter": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954",
+    "claimAuthority": "0x5aB3036C7d0bA7043E0BB531374dC6c732eC4954"
+  },
+  "network": "robinhoodTestnet",
+  "deployedAt": "2026-09-24T21:09:39.621Z"
+}

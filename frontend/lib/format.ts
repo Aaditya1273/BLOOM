@@ -144,8 +144,14 @@ export function kindFromConfirm(r: ConfirmResult): ResultKind {
   return classifyText(`${r.reason ?? ""} ${r.message}`, "rejected");
 }
 
-export const errorMessage = (e: unknown) =>
-  e instanceof Error ? e.message : "Something went wrong. Please try again.";
+export function errorMessage(e: unknown): string {
+  // wallet (viem/wagmi) errors carry a shortMessage; map the common ones to plain English
+  const raw = String((e as { shortMessage?: string })?.shortMessage ?? (e instanceof Error ? e.message : ""));
+  if (/user rejected|user denied|rejected the request/i.test(raw)) return "You cancelled the request in your wallet.";
+  if (/insufficient funds/i.test(raw)) return "Your wallet needs a little testnet ETH on Robinhood Chain for gas.";
+  if (/chain mismatch|does not match the target chain|switch chain/i.test(raw)) return "Switch your wallet to Robinhood Chain Testnet and try again.";
+  return raw || "Something went wrong. Please try again.";
+}
 
 /** Accepts unix seconds, ms or ISO. "Today" / "Yesterday" / "Sep 21" / "Sep 21, 2025". */
 export function dayLabel(t: number | string | null | undefined, now = new Date()): string {

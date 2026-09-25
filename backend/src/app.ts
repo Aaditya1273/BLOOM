@@ -7,7 +7,7 @@ import {
   ABI, ApiError, EXPLORER, LOCAL, MAINNET, USDG, addr, assets, chainId, deployment, demoOwner, fail, log, minter, provider,
   requireTestnet, sendTx,
 } from "./ctx.ts";
-import { accountAddress, accountView, createGoal, deposit, ensureAccount, faucet, invest, listGoals, resolveOwner, revokeGoal } from "./account.ts";
+import { accountAddress, accountView, createGoal, deposit, ensureAccount, faucet, invest, listGoals, prepareGoalActivation, resolveOwner, revokeGoal } from "./account.ts";
 import { borrowCheck, riskAll, riskOf, stockBySymbol } from "./risk.ts";
 import { chat, confirm } from "./agent.ts";
 import { getClaim, redeemClaim } from "./claims.ts";
@@ -96,6 +96,11 @@ export function createApp(reporter: Reporter | null) {
   app.post("/api/goals", async (req, res) => {
     const b = parse(ownerQ.extend({ goal: GoalSchema }), req.body);
     res.json(await createGoal(resolveOwner(b.owner), b.goal));
+  });
+  // wallet owners: after the createGoal tx is mined, get the activateGoal tx to sign
+  app.post("/api/goals/activate", async (req, res) => {
+    const b = parse(ownerQ.extend({ txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/) }), req.body);
+    res.json(await prepareGoalActivation(resolveOwner(b.owner), b.txHash));
   });
   app.get("/api/goals", async (req, res) => {
     res.json(await listGoals(resolveOwner(parse(ownerQ, req.query).owner)));

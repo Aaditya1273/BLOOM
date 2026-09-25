@@ -1,5 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config({ quiet: true });
+require("./scripts/lib/env");
 require("./scripts/lib/ethers-fetch");
 
 // Keys are only read from the environment. Never hardcode keys in this repository.

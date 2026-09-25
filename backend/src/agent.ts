@@ -253,6 +253,8 @@ export async function confirm(owner: string, actionId: string) {
   pending.delete(actionId); // single use
   if (p.kind === "goal") {
     const r = await createGoal(owner, p.goal!);
+    // wallet owners sign the goal themselves: hand the prepared transactions back to the frontend
+    if ("sign" in r) return { status: "sign_required", ...r, message: "Confirm the goal in your wallet to put it on autopilot." };
     return { status: "executed", txHashes: r.txHashes, message: `Goal created. The agent can act for you until ${r.expiresAt.slice(0, 10)}, within your rules.`, goalId: r.goalId };
   }
   const agent = agentKey ?? fail(503, "INTERNAL", "No agent session key configured.");

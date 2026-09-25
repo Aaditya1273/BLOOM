@@ -7,6 +7,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { ethers, network } = require("hardhat");
 const { deployTestnetSystem, deployMainnetSystem } = require("./lib/system");
+const { testnetRoleKey } = require("./lib/env");
 
 const log = (m) => console.log(m);
 const addrFromKey = (k) => (k ? new ethers.Wallet(k).address : undefined);
@@ -53,8 +54,9 @@ async function main() {
   if (chainId !== 46630 && chainId !== 31337) throw new Error(`Refusing to deploy testnet mocks on chain ${chainId}`);
   const cfg = require("../config/robinhood-testnet.json");
   const local = chainId === 31337;
-  const reporter = process.env.REPORTER_PRIVATE_KEY ? new ethers.Wallet(process.env.REPORTER_PRIVATE_KEY) : local ? signers[1] : null;
-  const claimAuthority = process.env.CLAIM_AUTHORITY_PRIVATE_KEY ? new ethers.Wallet(process.env.CLAIM_AUTHORITY_PRIVATE_KEY) : local ? signers[2] : null;
+  // local: Hardhat dev accounts; testnet: separate keys if set, otherwise the deployer key (single-key testnet setup)
+  const reporter = local ? signers[1] : new ethers.Wallet(testnetRoleKey("REPORTER_PRIVATE_KEY"));
+  const claimAuthority = local ? signers[2] : new ethers.Wallet(testnetRoleKey("CLAIM_AUTHORITY_PRIVATE_KEY"));
   if (!reporter || !claimAuthority) throw new Error("Set REPORTER_PRIVATE_KEY and CLAIM_AUTHORITY_PRIVATE_KEY in .env");
 
   const sys = await deployTestnetSystem(cfg, { admin, reporter, claimAuthority, riskEngineAddress: process.env.BLOOM_RISK_ENGINE_ADDRESS, log });

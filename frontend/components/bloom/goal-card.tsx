@@ -5,7 +5,8 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { Goal } from "@/lib/types";
+import { isSignRequest, type Goal } from "@/lib/types";
+import { useWalletSign } from "@/hooks/use-wallet-sign";
 import { errorMessage, pct, shortDate, shortHash, usd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BloomCard, Progress } from "./card";
@@ -56,12 +57,14 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 export function GoalCard({ goal, onRevoked, delay }: { goal: Goal; onRevoked?: () => void; delay?: number }) {
   const [busy, setBusy] = useState(false);
+  const { complete } = useWalletSign();
   const p = goalProgress(goal);
 
   async function revoke() {
     setBusy(true);
     try {
-      await api.revokeGoal(goal.goalId);
+      const r = await api.revokeGoal(goal.goalId);
+      if (isSignRequest(r)) await complete(r); // your wallet signs revokeGoal
       toast.success("Autopilot turned off", { description: `${goal.name} will no longer be managed by the Bloom Agent.` });
       onRevoked?.();
     } catch (e) {

@@ -19,6 +19,7 @@ import type {
   LearnState,
   LessonResult,
   RiskSnapshot,
+  SignRequest,
   Scenario,
   SimulateResult,
   TxResult,
@@ -39,13 +40,25 @@ export class ApiError extends Error {
   }
 }
 
+/** The connected wallet (set by the app shell). Every request acts for this owner's Bloom wallet. */
+let currentOwner: string | undefined;
+export function setApiOwner(owner: string | undefined) {
+  currentOwner = owner;
+}
+
 async function request<T>(path: string, body?: unknown): Promise<T> {
   let res: Response;
+  let url = `${API_URL}${path}`;
+  let payload = body;
+  if (currentOwner) {
+    if (body === undefined) url += `${path.includes("?") ? "&" : "?"}owner=${encodeURIComponent(currentOwner)}`;
+    else payload = { ...(body as Record<string, unknown>), owner: currentOwner };
+  }
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(url, {
       method: body === undefined ? "GET" : "POST",
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: payload === undefined ? undefined : JSON.stringify(payload),
       cache: "no-store",
     });
   } catch {
@@ -61,7 +74,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 
 const enc = encodeURIComponent;
 
-// Every `owner` is optional: the backend defaults to its testnet demo owner.
+// `owner` is added automatically for the connected wallet (see setApiOwner).
 export const api = {
   health: () => request<Health>("/api/health"),
   config: () => request<Config>("/api/config"),
@@ -69,14 +82,15 @@ export const api = {
   account: () => request<Account>("/api/account"),
   history: () => request<History>("/api/account/history"),
   faucet: () => request<FaucetResult>("/api/faucet", {}),
-  deposit: (amount: string) => request<DepositResult>("/api/deposit", { amount }),
+  deposit: (amount: string) => request<DepositResult | SignRequest>("/api/deposit", { amount }),
   invest: (amount: string, allocation?: { symbol: string; bps: number }[]) =>
-    request<InvestResult>("/api/invest", { amount, allocation }),
+    request<InvestResult | SignRequest>("/api/invest", { amount, allocation }),
 
   previewGoal: (text: string) => request<{ goal: GoalParams }>("/api/goals/preview", { text }),
-  createGoal: (goal: GoalParams) => request<GoalCreated>("/api/goals", { goal }),
+  createGoal: (goal: GoalParams) => request<GoalCreated | SignRequest>("/api/goals", { goal }),
+  activateGoal: (txHash: string) => request<SignRequest & { goalId: string; sessionKey: string }>("/api/goals/activate", { txHash }),
   goals: () => request<Goal[]>("/api/goals"),
-  revokeGoal: (id: string | number) => request<TxResult>(`/api/goals/${enc(String(id))}/revoke`, {}),
+  revokeGoal: (id: string | number) => request<TxResult | SignRequest>(`/api/goals/${enc(String(id))}/revoke`, {}),
 
   chat: (message: string) => request<ChatResponse>("/api/chat", { message }),
   confirm: (actionId: string) => request<ConfirmResult>("/api/chat/confirm", { actionId }),

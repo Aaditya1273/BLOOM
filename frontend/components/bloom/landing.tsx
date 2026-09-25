@@ -2,6 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   AnimatePresence,
@@ -38,6 +41,27 @@ import { cn } from "@/lib/utils";
 
 const CONTAINER = "mx-auto w-full max-w-[1200px] px-5 sm:px-8 lg:px-12";
 
+/**
+ * "Try Bloom": the wallet gate. Connected -> straight into the app. Otherwise open RainbowKit and enter as soon as
+ * the wallet connects. Visiting the landing page never auto-redirects on its own.
+ */
+function useEnterApp() {
+  const { status } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const router = useRouter();
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => {
+    if (pending && status === "connected") router.push(pending);
+  }, [pending, status, router]);
+  return (to: string = "/home") => {
+    if (status === "connected") router.push(to);
+    else {
+      setPending(to);
+      openConnectModal?.();
+    }
+  };
+}
+
 /* ───────────────────────────── navigation ───────────────────────────── */
 
 const NAV_LINKS = [
@@ -49,6 +73,7 @@ const NAV_LINKS = [
 
 /** Full-width and transparent over the hero; morphs into a floating cream pill once the page scrolls. */
 function LandingNav() {
+  const enter = useEnterApp();
   const { scrollY } = useScroll();
   const [floating, setFloating] = useState(false);
   useMotionValueEvent(scrollY, "change", (y) => setFloating(y > 40));
@@ -63,7 +88,7 @@ function LandingNav() {
             : "h-16 max-w-[1200px] rounded-[0px] border-transparent bg-transparent px-2 sm:px-5 lg:px-9",
         )}
       >
-        <Link href="/welcome" aria-label="Bloom home" className="rounded-chip">
+        <Link href="/" aria-label="Bloom home" className="rounded-chip">
           <BloomLogo size={floating ? 26 : 30} animate />
         </Link>
         <div className="hidden items-center gap-0.5 md:flex">
@@ -77,9 +102,9 @@ function LandingNav() {
             </a>
           ))}
         </div>
-        <Link href="/" className={buttonClass("primary", "sm", floating ? "rounded-full" : undefined)}>
+        <button type="button" onClick={() => enter()} className={buttonClass("primary", "sm", floating ? "rounded-full" : undefined)}>
           Try Bloom <ArrowRight />
-        </Link>
+        </button>
       </nav>
     </header>
   );
@@ -149,6 +174,7 @@ function HandNote() {
 }
 
 function Hero() {
+  const enter = useEnterApp();
   const ref = useRef<HTMLElement>(null);
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
@@ -225,9 +251,9 @@ function Hero() {
             transition={{ duration: 0.7, delay: 1.15, ease: EASE }}
             className="relative mt-9 flex flex-wrap justify-center gap-3"
           >
-            <Link href="/" className={buttonClass("primary", "lg", "group")}>
+            <button type="button" onClick={() => enter()} className={buttonClass("primary", "lg", "group")}>
               Try Bloom <ArrowRight className="transition-transform duration-300 group-hover:translate-x-0.5" />
-            </Link>
+            </button>
             <a href="#how" className={buttonClass("secondary", "lg", "bg-surface/80 backdrop-blur")}>
               See how it works
             </a>
@@ -467,6 +493,7 @@ function RiskCycle() {
 }
 
 function RiskSection() {
+  const enter = useEnterApp();
   return (
     <section id="risk" aria-labelledby="risk-h" className="relative scroll-mt-20 overflow-hidden border-t border-line py-24 sm:py-32">
       <div className={cn(CONTAINER, "grid items-center gap-14 lg:grid-cols-2 lg:gap-20")}>
@@ -495,9 +522,9 @@ function RiskSection() {
             <RiskCycle />
             <p className="mt-3 text-xs text-muted">
               Illustration of the risk states.{" "}
-              <Link href="/risk" className="font-medium text-ink underline-offset-4 hover:underline">
+              <button type="button" onClick={() => enter("/risk")} className="font-medium text-ink underline-offset-4 hover:underline">
                 See the live version
-              </Link>
+              </button>
               .
             </p>
           </Reveal>
@@ -703,6 +730,7 @@ function TechSection() {
 /* ───────────────────────────── closing CTA ───────────────────────────── */
 
 function ClosingCta() {
+  const enter = useEnterApp();
   return (
     <section aria-labelledby="cta-h" className={cn(CONTAINER, "pb-8")}>
       <Reveal className="relative isolate overflow-hidden rounded-[32px] px-6 py-16 [clip-path:inset(0_round_32px)] sm:px-14 sm:py-24">
@@ -722,12 +750,12 @@ function ClosingCta() {
         </h2>
         <p className="mt-4 max-w-lg text-lg text-ink/75">The demo runs on testnet with mock assets, so you can try every flow safely.</p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/" className={buttonClass("primary", "lg", "group")}>
+          <button type="button" onClick={() => enter()} className={buttonClass("primary", "lg", "group")}>
             Try Bloom <ArrowRight className="transition-transform duration-300 group-hover:translate-x-0.5" />
-          </Link>
-          <Link href="/risk" className={buttonClass("secondary", "lg", "bg-surface/80 backdrop-blur")}>
+          </button>
+          <button type="button" onClick={() => enter("/risk")} className={buttonClass("secondary", "lg", "bg-surface/80 backdrop-blur")}>
             Explore risk controls
-          </Link>
+          </button>
         </div>
       </Reveal>
     </section>

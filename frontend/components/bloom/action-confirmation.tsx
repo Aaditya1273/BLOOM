@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { ActionCard, ClaimSecret, ConfirmResult } from "@/lib/types";
 import { errorMessage, kindFromConfirm, kindFromError, num, riskName, shortDate, shortHash, usd, type ResultKind } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useWalletSign } from "@/hooks/use-wallet-sign";
 import { BloomButton } from "./button";
 import { ActionResult, Details } from "./states";
 import { RiskState } from "./risk";
@@ -127,6 +128,7 @@ export function ActionConfirmation({
   const [state, setState] = useState<{ kind: ResultKind; message?: string; result?: ConfirmResult } | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { complete } = useWalletSign();
   useEffect(() => {
     if (state && state.kind !== "pending") ref.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [state]);
@@ -147,6 +149,13 @@ export function ActionConfirmation({
     setState({ kind: "pending" });
     try {
       const r = await api.confirm(actionId);
+      if (r.status === "sign_required" && r.sign) {
+        // goals are owner actions: your wallet signs them (the agent never can)
+        const signed = (await complete({ sign: r.sign }))!;
+        const done = { ...r, status: "executed" as const, txHashes: signed.txHashes, goalId: signed.goalId, message: "Goal created and on autopilot, within your rules." };
+        setState({ kind: kindFromConfirm(done), message: done.message, result: done });
+        return;
+      }
       setState({ kind: kindFromConfirm(r), message: r.message, result: r });
     } catch (e) {
       setState({ kind: kindFromError(e), message: errorMessage(e) });

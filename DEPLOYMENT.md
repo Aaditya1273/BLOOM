@@ -50,14 +50,22 @@ cd frontend && npm install && npm run dev          # terminal 4 → http://local
 
 ## 3. Testnet (46630)
 
+**Live deployment (2026-09-25):** Stylus engine `0xc464c03bfe7efa388457b8b392454b99fa18b124` plus the full Bloom system;
+see `deployments/robinhood-testnet.json`. It cost about 0.00053 ETH in total at 0.01 gwei.
+
+Single-key testnet setup: put `PRIVATE_KEY=<funded key>` (0x optional) in the root `.env.local`. It becomes the
+deployer, and on testnet only it also serves as the reporter, claim authority, agent session key and faucet minter
+unless you set separate keys. The in-process reporter runs every 120s on testnet (override with `REPORTER_INTERVAL_SEC`).
+
 ### 3a. Stylus risk engine
 
 ```bash
-cd stylus-risk-engine
-cargo stylus check  --endpoint $RH_TESTNET_RPC_URL
-node ../scripts/deploy-stylus.js testnet           # wraps `cargo stylus deploy` with constructor args (owner, maxReportAge)
+node scripts/deploy-stylus.js testnet   # cargo stylus check + deploy with constructor args (owner, maxReportAge)
 # → prints the engine address and writes deployments/stylus-risk-engine-testnet.json
 ```
+
+The script passes `--no-verify` so it builds natively instead of in the reproducible Docker image (Docker is optional).
+To publish verifiable source later: `cargo stylus verify --deployment-tx <hash>` with Docker running.
 
 ### 3b. Bloom contracts, wired to the Stylus engine
 
@@ -73,9 +81,13 @@ Testnet deployment never asks for confirmation. It refuses to deploy mocks on an
 ### 3c. Run the services against testnet
 
 ```bash
-BLOOM_DEPLOYMENT=robinhood-testnet npm --prefix backend start
-NEXT_PUBLIC_API_URL=http://localhost:3001 npm --prefix frontend run dev
+BLOOM_DEPLOYMENT=robinhood-testnet npm --prefix backend start           # API + reporter (public RPC by default)
+npm --prefix frontend run dev                                            # RainbowKit on chain 46630
+BLOOM_DEPLOYMENT=robinhood-testnet node backend/scripts/wallet-flow-smoke.ts   # optional: end-to-end wallet check
 ```
+
+`WALLET_CONNECT_PROJECT_ID` (root `.env.local`) is exposed to the browser for RainbowKit; the frontend reads only
+public values from that file, never the private key.
 
 ## 4. Mainnet (4663) — gated
 

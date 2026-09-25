@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { BloomShell } from "@/components/bloom/shell";
+import { Providers } from "@/components/bloom/providers";
 
 // Self-hosted Inter (latin, variable weight) so builds work offline.
 const inter = localFont({ src: "./fonts/InterVariable-latin.woff2", weight: "100 900", variable: "--font-inter" });
@@ -22,7 +23,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${inter.variable} ${script.variable}`}>
       <body className="flex min-h-dvh flex-col">
-        <BloomShell>{children}</BloomShell>
+        <Providers>
+          <BloomShell>{children}</BloomShell>
+        </Providers>
       </body>
     </html>
   );

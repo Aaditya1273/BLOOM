@@ -12,7 +12,11 @@ installFetchTransport(FetchRequest);
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DATA_DIR = process.env.BLOOM_DATA_DIR ?? join(ROOT, "backend", "data");
+// .env.local first (first value wins), then .env. PRIVATE_KEY (with or without 0x) is accepted as the deployer key.
+dotenv.config({ path: join(ROOT, ".env.local"), quiet: true });
 dotenv.config({ path: join(ROOT, ".env"), quiet: true });
+const hex0x = (k?: string) => (k ? (k.trim().startsWith("0x") ? k.trim() : `0x${k.trim()}`) : undefined);
+if (!process.env.DEPLOYER_PRIVATE_KEY && process.env.PRIVATE_KEY) process.env.DEPLOYER_PRIVATE_KEY = hex0x(process.env.PRIVATE_KEY);
 export const log = makeLogger("backend");
 const env = process.env;
 
@@ -31,7 +35,13 @@ export const USDG = assets.find((a) => a.kind === "STABLE")!;
 export const assetBySymbol = (s: string) => assets.find((a) => a.symbol === s.toUpperCase());
 export const assetByToken = (t: string) => assets.find((a) => a.token.toLowerCase() === t.toLowerCase());
 
-export const RPC_URL = env.RPC_URL ?? (MAINNET ? env.RH_MAINNET_RPC_URL : LOCAL ? "http://127.0.0.1:8545" : env.RH_TESTNET_RPC_URL);
+export const RPC_URL =
+  env.RPC_URL ??
+  (MAINNET
+    ? env.RH_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com"
+    : LOCAL
+      ? "http://127.0.0.1:8545"
+      : env.RH_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
 if (!RPC_URL) throw new Error("No RPC URL: set RH_TESTNET_RPC_URL / RH_MAINNET_RPC_URL / RPC_URL");
 export const provider = new JsonRpcProvider(RPC_URL, chainId, { staticNetwork: true, cacheTimeout: -1 }); // no request cache: nonces must be fresh
 
@@ -43,7 +53,10 @@ const HH = {
   demoOwner: "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba", // #5
   agent: "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e", // #6
 };
-const key = (name: string, local?: string) => env[name] || (LOCAL ? local : undefined);
+// local: public Hardhat dev keys. testnet: a dedicated key if set, otherwise the deployer key (single-key testnet
+// setup). mainnet: only explicitly configured keys, never a fallback.
+const key = (name: string, local?: string) =>
+  hex0x(env[name]) || (LOCAL ? local : MAINNET ? undefined : hex0x(env.DEPLOYER_PRIVATE_KEY));
 const wallet = (k?: string) => (k ? new Wallet(k, provider) : null);
 
 export const keys = {

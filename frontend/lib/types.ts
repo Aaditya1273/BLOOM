@@ -202,7 +202,8 @@ export interface ClaimSecret {
 }
 
 export interface ConfirmResult {
-  status: "executed" | "rejected" | "reverted";
+  status: "executed" | "rejected" | "reverted" | "sign_required";
+  sign?: SignRequest["sign"];
   txHashes: string[];
   reason?: string;
   policyReason?: string;
@@ -263,3 +264,15 @@ export interface History {
   windowSinceSec: number | null;
   assetChanges: Record<string, { changeBps: number | null; sinceSec: number | null }>;
 }
+
+// ── Wallet-signed owner actions
+/** Returned instead of a result when the connected wallet must sign the owner transactions itself. */
+export interface SignRequest {
+  sign: {
+    chainId: number;
+    label: string;
+    txs: { to: `0x${string}`; data: `0x${string}`; value: "0" }[];
+    next?: "activate-goal";
+  };
+}
+export const isSignRequest = (r: unknown): r is SignRequest => typeof r === "object" && r !== null && "sign" in r;

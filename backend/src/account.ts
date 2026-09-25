@@ -18,6 +18,30 @@ export function resolveOwner(owner?: string): string {
   return demoOwner.address;
 }
 
+/** True when the backend holds the owner's key (the demo owner on testnet/local). */
+export const isDemoOwner = (owner: string) => Boolean(demoOwner) && owner.toLowerCase() === demoOwner!.address.toLowerCase();
+
+/**
+ * Transactions a connected wallet must sign itself. The backend never holds user keys: for wallet owners it returns the
+ * exact calls (to its own BloomAccount or to BloomPolicy) and the frontend submits them with the user's wallet.
+ */
+export type SignRequest = {
+  sign: { chainId: number; label: string; txs: { to: string; data: string; value: "0" }[]; next?: "activate-goal" };
+};
+// ponytail: owner actions (backend-signed or wallet-signed) are testnet-only until mainnet is deployed and reviewed.
+const signRequest = (label: string, txs: { to: string; data: string }[], next?: "activate-goal"): SignRequest => ({
+  sign: { chainId: Number(chainIdOf()), label, txs: txs.map((t) => ({ ...t, value: "0" as const })), ...(next ? { next } : {}) },
+});
+const chainIdOf = () => provider._network?.chainId ?? 0n;
+
+/** Owner calls wrapped into a single BloomAccount.execute / executeBatch transaction for the wallet to sign. */
+function accountTx(account: string, calls: Call[]) {
+  const data = calls.length === 1
+    ? IFACE.account.encodeFunctionData("execute", [calls[0].target, 0, calls[0].data])
+    : IFACE.account.encodeFunctionData("executeBatch", [calls]);
+  return { to: account, data };
+}
+
 /** Owner actions need a key the backend holds: only the demo owner on testnet/local. */
 function ownerSigner(owner: string) {
   requireTestnet("Owner-signed actions");
@@ -32,8 +56,10 @@ export const accountAddress = async (owner: string): Promise<string> => c.factor
 export async function ensureAccount(owner: string): Promise<string> {
   const account = await accountAddress(owner);
   if ((await provider.getCode(account)) === "0x") {
-    const s = ownerSigner(owner);
-    await sendTx(s, "createAccount", () => (c.factory.connect(s) as Contract).createAccount(owner, 0));
+    // BloomAccountFactory.createAccount is permissionless and binds the account to `owner`; a sponsor may pay the gas.
+    const s = isDemoOwner(owner) ? ownerSigner(owner) : minter;
+    if (!s) fail(400, "BAD_REQUEST", "Your Bloom wallet isn't set up yet and no sponsor key is configured on this network.");
+    await sendTx(s!, "createAccount", () => (c.factory.connect(s!) as Contract).createAccount(owner, 0));
   }
   return account;
 }
@@ -107,16 +133,24 @@ export async function faucet(owner: string, amount = FAUCET_AMOUNT, oncePerDay =
 }
 
 // ─── deposit / invest (owner-signed) ───
-export async function deposit(owner: string, amountStr: string) {
-  ownerSigner(owner); // refuse early (mainnet / non-demo owner) before any chain reads
+const depositCalls = (account: string, amount: bigint): Call[] => [
+  { target: USDG.token, value: 0n, data: IFACE.usdg.encodeFunctionData("approve", [addr.BloomVault, amount]) },
+  { target: addr.BloomVault, value: 0n, data: IFACE.vault.encodeFunctionData("deposit", [amount, account]) },
+];
+
+export async function deposit(owner: string, amountStr: string): Promise<{ txHash: string; shares: string } | SignRequest> {
+  requireTestnet("Deposits from this app");
   const amount = parseUsdg(amountStr);
+  if (!isDemoOwner(owner)) {
+    const account = await ensureAccount(owner);
+    await requireUsdg(account, amount);
+    return signRequest(`Save $${fmt(amount, USDG.decimals)} in USDG savings`, [accountTx(account, depositCalls(account, amount))]);
+  }
+  ownerSigner(owner); // refuse early (mainnet) before any chain reads
   const account = await ensureAccount(owner);
   await requireUsdg(account, amount);
   const before: bigint = await c.vault.balanceOf(account);
-  const rc = await ownerExec(owner, "deposit", [
-    { target: USDG.token, value: 0n, data: IFACE.usdg.encodeFunctionData("approve", [addr.BloomVault, amount]) },
-    { target: addr.BloomVault, value: 0n, data: IFACE.vault.encodeFunctionData("deposit", [amount, account]) },
-  ]);
+  const rc = await ownerExec(owner, "deposit", depositCalls(account, amount));
   const after: bigint = await c.vault.balanceOf(account);
   return { txHash: rc.hash, shares: fmt(after - before, Number(await c.vault.decimals())) };
 }
@@ -138,10 +172,22 @@ export async function swapCalls(account: string, symbol: string, usdgAmount: big
   ];
 }
 
-export async function invest(owner: string, amountStr: string, allocation = DEFAULT_ALLOCATION) {
-  ownerSigner(owner);
+export async function invest(owner: string, amountStr: string, allocation = DEFAULT_ALLOCATION): Promise<{ steps: { label: string; txHash: string; status: string }[] } | SignRequest> {
+  requireTestnet("Investing from this app");
   const amount = parseUsdg(amountStr);
   if (allocation.reduce((a, x) => a + x.bps, 0) !== 10_000) fail(400, "BAD_REQUEST", "allocation bps must sum to 10000.");
+  if (!isDemoOwner(owner)) {
+    const account = await ensureAccount(owner);
+    await requireUsdg(account, amount);
+    const calls: Call[] = [];
+    for (const part of allocation) {
+      const amt = (amount * BigInt(part.bps)) / 10_000n;
+      if (amt === 0n) continue;
+      calls.push(...(part.symbol === "SAVINGS" || part.symbol === "USDG" ? depositCalls(account, amt) : await swapCalls(account, part.symbol, amt)));
+    }
+    return signRequest(`Invest $${fmt(amount, USDG.decimals)}`, [accountTx(account, calls)]);
+  }
+  ownerSigner(owner);
   const account = await ensureAccount(owner);
   await requireUsdg(account, amount);
   const steps: { label: string; txHash: string; status: string }[] = [];
@@ -149,8 +195,8 @@ export async function invest(owner: string, amountStr: string, allocation = DEFA
     const amt = (amount * BigInt(part.bps)) / 10_000n;
     if (amt === 0n) continue;
     if (part.symbol === "SAVINGS" || part.symbol === "USDG") {
-      const r = await deposit(owner, fmt(amt, USDG.decimals));
-      steps.push({ label: `Save $${fmt(amt, USDG.decimals)} in USDG savings`, txHash: r.txHash, status: "confirmed" });
+      const rc = await ownerExec(owner, "deposit", depositCalls(account, amt));
+      steps.push({ label: `Save $${fmt(amt, USDG.decimals)} in USDG savings`, txHash: rc.hash, status: "confirmed" });
     } else {
       const rc = await ownerExec(owner, `buy ${part.symbol}`, await swapCalls(account, part.symbol, amt));
       steps.push({ label: `Buy $${fmt(amt, USDG.decimals)} of ${part.symbol}`, txHash: rc.hash, status: "confirmed" });
@@ -165,28 +211,42 @@ export type GoalInput = {
   maxStockAllocationBps: number; allowedAssets: string[];
 };
 
-export async function createGoal(owner: string, g: GoalInput) {
-  const s = ownerSigner(owner);
-  const account = await ensureAccount(owner);
-  if (!agentKey) fail(503, "INTERNAL", "No agent session key configured.");
-  const deadline = Math.floor(Date.parse(g.deadline) / 1000);
-  const now = (await provider.getBlock("latest"))!.timestamp;
-  if (!(deadline > now)) fail(400, "BAD_REQUEST", "The goal deadline must be in the future.");
-  const allowed = g.allowedAssets.map((sym) => assetBySymbol(sym)?.token ?? fail(400, "UNSUPPORTED_ASSET", `${sym} is not supported.`));
-  const policy = c.policy.connect(s) as Contract;
-  const txHashes: string[] = [];
-  // one active goal per session key: revoke the previous one first
-  const prev: bigint = await c.policy.goalOfAgent(account, agentKey!.address);
-  if (prev !== 0n) txHashes.push((await sendTx(s, "revokeGoal", () => policy.revokeGoal(prev))).hash);
-  const rc = await sendTx(s, "createGoal", () => policy.createGoal(account, {
+function goalParams(g: GoalInput, deadline: number) {
+  return {
     name: encodeBytes32String(g.name.slice(0, 31)),
     targetAmount: parseUnits(g.targetAmount, USDG.decimals),
     deadline,
     maxPerTxUsd: parseUnits(g.maxPerTx, 18),
     dailyCapUsd: parseUnits(g.maxDailySpend, 18),
     maxStockAllocationBps: g.maxStockAllocationBps,
-    allowedAssets: allowed,
-  }));
+    allowedAssets: g.allowedAssets.map((sym) => assetBySymbol(sym)?.token ?? fail(400, "UNSUPPORTED_ASSET", `${sym} is not supported.`)),
+  };
+}
+
+export async function createGoal(owner: string, g: GoalInput) {
+  requireTestnet("Creating goals from this app");
+  if (!agentKey) fail(503, "INTERNAL", "No agent session key configured.");
+  const deadline = Math.floor(Date.parse(g.deadline) / 1000);
+  const now = (await provider.getBlock("latest"))!.timestamp;
+  if (!(deadline > now)) fail(400, "BAD_REQUEST", "The goal deadline must be in the future.");
+  if (!isDemoOwner(owner)) {
+    // wallet owner: sign [revoke previous goal of this agent] + createGoal, then POST /api/goals/activate with the tx hash
+    const account = await ensureAccount(owner);
+    const txs: { to: string; data: string }[] = [];
+    const prev: bigint = await c.policy.goalOfAgent(account, agentKey!.address);
+    if (prev !== 0n) txs.push({ to: addr.BloomPolicy, data: IFACE.policy.encodeFunctionData("revokeGoal", [prev]) });
+    txs.push({ to: addr.BloomPolicy, data: IFACE.policy.encodeFunctionData("createGoal", [account, goalParams(g, deadline)]) });
+    return signRequest(`Create goal “${g.name}”`, txs, "activate-goal");
+  }
+  const s = ownerSigner(owner);
+  const account = await ensureAccount(owner);
+  const params = goalParams(g, deadline);
+  const policy = c.policy.connect(s) as Contract;
+  const txHashes: string[] = [];
+  // one active goal per session key: revoke the previous one first
+  const prev: bigint = await c.policy.goalOfAgent(account, agentKey!.address);
+  if (prev !== 0n) txHashes.push((await sendTx(s, "revokeGoal", () => policy.revokeGoal(prev))).hash);
+  const rc = await sendTx(s, "createGoal", () => policy.createGoal(account, params));
   txHashes.push(rc.hash);
   const ev = rc.logs.map((l: any) => { try { return IFACE.policy.parseLog(l); } catch { return null; } }).find((e: any) => e?.name === "GoalCreated");
   const goalId = BigInt(ev!.args.goalId);
@@ -221,11 +281,35 @@ export async function listGoals(owner: string) {
   return out;
 }
 
+/** Wallet owners: after the createGoal tx is mined, return the activateGoal tx binding the agent session key. */
+export async function prepareGoalActivation(owner: string, txHash: string) {
+  requireTestnet("Activating goals from this app");
+  if (!agentKey) fail(503, "INTERNAL", "No agent session key configured.");
+  const rc = await provider.getTransactionReceipt(txHash);
+  if (!rc || rc.status !== 1) fail(400, "BAD_REQUEST", "That goal transaction isn't confirmed yet.");
+  const account = (await accountAddress(owner)).toLowerCase();
+  const ev = rc!.logs
+    .filter((l) => l.address.toLowerCase() === addr.BloomPolicy.toLowerCase())
+    .map((l) => { try { return IFACE.policy.parseLog(l); } catch { return null; } })
+    .find((e) => e?.name === "GoalCreated" && String(e.args.account).toLowerCase() === account);
+  if (!ev) fail(400, "BAD_REQUEST", "No goal for this wallet was created in that transaction.");
+  const goalId = BigInt(ev!.args.goalId);
+  return {
+    goalId: goalId.toString(),
+    sessionKey: agentKey!.address,
+    ...signRequest("Put your goal on autopilot", [{ to: addr.BloomPolicy, data: IFACE.policy.encodeFunctionData("activateGoal", [goalId, agentKey!.address]) }]),
+  };
+}
+
 export async function revokeGoal(owner: string, goalId: string) {
-  const s = ownerSigner(owner);
+  requireTestnet("Changing goals from this app");
   if (!/^\d+$/.test(goalId)) fail(400, "BAD_REQUEST", "goal id must be a number.");
   const [g] = await c.policy.getGoal(goalId);
   if (g.account.toLowerCase() !== (await accountAddress(owner)).toLowerCase()) fail(404, "NOT_FOUND", "Goal not found for this owner.");
+  if (!isDemoOwner(owner)) {
+    return signRequest("Turn off autopilot", [{ to: addr.BloomPolicy, data: IFACE.policy.encodeFunctionData("revokeGoal", [goalId]) }]);
+  }
+  const s = ownerSigner(owner);
   const rc = await sendTx(s, "revokeGoal", () => (c.policy.connect(s) as Contract).revokeGoal(goalId));
   return { txHash: rc.hash };
 }

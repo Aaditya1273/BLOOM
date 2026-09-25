@@ -16,7 +16,8 @@ if (keys.reporter && (MAINNET || keys.feedAdmin)) {
     corpActionWindowSec: process.env.CORP_ACTION_WINDOW_SEC ? Number(process.env.CORP_ACTION_WINDOW_SEC) : undefined,
     logger: log,
   });
-  if ((process.env.REPORTER_ENABLED ?? (MAINNET ? "false" : "true")) === "true") reporter.start(Number(process.env.REPORTER_INTERVAL_SEC ?? 30));
+  if ((process.env.REPORTER_ENABLED ?? (MAINNET ? "false" : "true")) === "true") // testnet default is gentler on the faucet-funded reporter key
+    reporter.start(Number(process.env.REPORTER_INTERVAL_SEC ?? (chainId === 31337 ? 30 : 120)));
 } else {
   log.warn("reporter not configured: risk reports will go stale", { chainId });
 }

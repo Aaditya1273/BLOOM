@@ -1,28 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { MotionConfig } from "framer-motion";
 import * as Popover from "@radix-ui/react-popover";
-import { ChevronDown, Clock3, House, MessageCircle, ShieldCheck, Sparkles, Target } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { ChevronDown, Clock3, House, LogOut, MessageCircle, ShieldCheck, Sparkles, Target, TriangleAlert, Wallet } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useAccount, useDisconnect } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Toaster } from "sonner";
-import { api } from "@/lib/api";
-import { useConfig, useQuery, MAINNET_CHAIN_ID } from "@/hooks/use-api";
+import { api, setApiOwner } from "@/lib/api";
+import { useQuery } from "@/hooks/use-api";
 import { shortHash } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BloomLogo, BloomMark } from "./logo";
 import { buttonClass } from "./button";
 
 export const NAV = [
-  { href: "/", label: "Home", icon: House },
+  { href: "/home", label: "Home", icon: House },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/agent", label: "Goals", icon: Target },
   { href: "/risk", label: "Risk", icon: ShieldCheck },
   { href: "/activity", label: "Activity", icon: Clock3 },
 ];
 
-const isActive = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+const isActive = (pathname: string, href: string) => pathname.startsWith(href);
 const PAGE_X = "px-5 sm:px-8 lg:px-12";
 
 function WalletDetails() {
@@ -45,53 +47,91 @@ function WalletDetails() {
   );
 }
 
-/** Wallet/profile chip. Network and addresses live in the popover, not up front. */
-function ProfileChip() {
-  const config = useConfig();
+/** Connected-wallet chip (RainbowKit). Addresses and network live in the popover, not up front. */
+function WalletChip() {
   const [open, setOpen] = useState(false);
-  const testnet = config?.chainId !== MAINNET_CHAIN_ID;
+  const { disconnect } = useDisconnect();
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        aria-label="Account and network"
-        className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-surface pr-3 pl-1 text-sm font-medium transition-colors hover:border-line-strong"
-      >
-        <span className="grid size-8 place-items-center rounded-full bg-pink-soft">
-          <BloomMark size={18} />
-        </span>
-        <span className="hidden lg:inline">Demo account</span>
-        <ChevronDown className="size-3.5 text-muted" />
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          align="end"
-          sideOffset={8}
-          collisionPadding={16}
-          className="z-50 w-72 rounded-card border border-line bg-surface p-4 shadow-md outline-none"
-        >
-          <p className="font-medium">Demo account</p>
-          <p className="mt-0.5 text-sm text-muted">
-            Robinhood Chain{testnet ? " · Testnet" : ""}
-          </p>
-          <details className="group mt-3 rounded-control bg-sunken/60 p-3">
-            <summary className="flex items-center justify-between text-xs font-medium">
-              Details <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="mt-3">
-              <WalletDetails />
-            </div>
-          </details>
-          <div className="mt-3 grid gap-1 text-sm">
-            <Link onClick={() => setOpen(false)} href="/welcome" className="rounded-chip px-2 py-2 hover:bg-sunken/70">
-              How Bloom works
-            </Link>
-            <Link onClick={() => setOpen(false)} href="/activity" className="rounded-chip px-2 py-2 hover:bg-sunken/70">
-              Activity
-            </Link>
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    <ConnectButton.Custom>
+      {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+        if (!mounted || !account || !chain) {
+          return (
+            <button type="button" onClick={openConnectModal} className={buttonClass("secondary", "sm")}>
+              <Wallet /> Connect wallet
+            </button>
+          );
+        }
+        if (chain.unsupported) {
+          return (
+            <button type="button" onClick={openChainModal} className={buttonClass("secondary", "sm", "border-danger/40 text-danger-text")}>
+              <TriangleAlert /> Switch network
+            </button>
+          );
+        }
+        return (
+          <Popover.Root open={open} onOpenChange={setOpen}>
+            <Popover.Trigger
+              aria-label="Wallet and network"
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-surface pr-3 pl-1 text-sm font-medium transition-colors hover:border-line-strong"
+            >
+              <span className="grid size-8 place-items-center rounded-full bg-pink-soft">
+                <BloomMark size={18} />
+              </span>
+              <span className="tabular">{account.displayName}</span>
+              <ChevronDown className="size-3.5 text-muted" />
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                align="end"
+                sideOffset={8}
+                collisionPadding={16}
+                className="z-50 w-72 rounded-card border border-line bg-surface p-4 shadow-md outline-none"
+              >
+                <p className="text-xs text-muted">Connected with RainbowKit</p>
+                <p className="mt-0.5 font-medium tabular">{account.displayName}</p>
+                <p className="mt-0.5 text-sm text-muted">
+                  {chain.name}
+                  {account.displayBalance ? ` · ${account.displayBalance}` : ""}
+                </p>
+                <details className="group mt-3 rounded-control bg-sunken/60 p-3">
+                  <summary className="flex items-center justify-between text-xs font-medium">
+                    Details <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3">
+                    <WalletDetails />
+                  </div>
+                </details>
+                <div className="mt-3 grid gap-1 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      openAccountModal();
+                    }}
+                    className="flex items-center gap-2 rounded-chip px-2 py-2 text-left hover:bg-sunken/70"
+                  >
+                    <Wallet className="size-4" /> Manage wallet
+                  </button>
+                  <Link onClick={() => setOpen(false)} href="/" className="rounded-chip px-2 py-2 hover:bg-sunken/70">
+                    How Bloom works
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      disconnect();
+                    }}
+                    className="flex items-center gap-2 rounded-chip px-2 py-2 text-left text-danger-text hover:bg-danger-soft"
+                  >
+                    <LogOut className="size-4" /> Disconnect
+                  </button>
+                </div>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+        );
+      }}
+    </ConnectButton.Custom>
   );
 }
 
@@ -100,7 +140,7 @@ function AppTopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-cream/85 backdrop-blur-xl">
       <div className={cn("mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4", PAGE_X)}>
-        <Link href="/" aria-label="Bloom home" className="rounded-chip">
+        <Link href="/home" aria-label="Bloom home" className="rounded-chip">
           <BloomLogo size={28} animate />
         </Link>
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
@@ -126,7 +166,7 @@ function AppTopBar() {
           <Link href="/chat" className={buttonClass("primary", "sm", "hidden md:inline-flex")}>
             <Sparkles /> Ask Bloom
           </Link>
-          <ProfileChip />
+          <WalletChip />
         </div>
       </div>
     </header>
@@ -159,28 +199,17 @@ function BottomTabs() {
   );
 }
 
-/** Minimal chrome for the public story page and claim links. */
-function PublicTopBar({ welcome }: { welcome: boolean }) {
+/** Minimal chrome for public claim links (no wallet needed to open one). */
+function PublicTopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-cream/85 backdrop-blur-xl">
       <div className={cn("mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-4", PAGE_X)}>
-        <Link href={welcome ? "/welcome" : "/"} aria-label="Bloom" className="rounded-chip">
+        <Link href="/" aria-label="Bloom" className="rounded-chip">
           <BloomLogo size={28} animate />
         </Link>
-        {welcome ? (
-          <div className="flex items-center gap-2">
-            <a href="#how" className={buttonClass("ghost", "sm", "hidden sm:inline-flex")}>
-              How it works
-            </a>
-            <Link href="/" className={buttonClass("primary", "sm")}>
-              Try Bloom
-            </Link>
-          </div>
-        ) : (
-          <Link href="/welcome" className="text-sm text-muted hover:text-ink">
-            What is Bloom?
-          </Link>
-        )}
+        <Link href="/" className="text-sm text-muted hover:text-ink">
+          What is Bloom?
+        </Link>
       </div>
     </header>
   );
@@ -194,7 +223,7 @@ function Footer({ withTabs }: { withTabs: boolean }) {
           Testnet demo with mock assets. Not investment advice. Robinhood Stock Tokens provide economic exposure to the
           underlying equity, not ownership of shares; availability is jurisdiction-dependent.
         </p>
-        <Link href="/welcome" className="shrink-0 font-medium text-ink underline-offset-4 hover:underline">
+        <Link href="/" className="shrink-0 font-medium text-ink underline-offset-4 hover:underline">
           How Bloom works
         </Link>
       </div>
@@ -202,18 +231,52 @@ function Footer({ withTabs }: { withTabs: boolean }) {
   );
 }
 
+/** Shown on app routes while the wallet reconnects after a reload. */
+function GateLoading() {
+  return (
+    <div className="grid min-h-[60vh] place-items-center" role="status" aria-live="polite">
+      <div className="flex flex-col items-center gap-3 text-sm text-muted">
+        <BloomMark size={36} animate />
+        Opening your Bloom wallet…
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Wallet gate. The landing page ("/") and claim links are public; every app route needs a connected wallet.
+ * The connected address is the owner for every API call. Disconnecting returns to the landing page.
+ */
+function useWalletGate(appRoute: boolean) {
+  const { address, status } = useAccount();
+  const router = useRouter();
+  // set synchronously so the first queries of child screens already act for this wallet
+  setApiOwner(status === "connected" ? address : undefined);
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client mount flag (wallet state is client-only)
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (appRoute && mounted && status === "disconnected") router.replace("/");
+  }, [appRoute, mounted, status, router]);
+  return mounted && status === "connected";
+}
+
 export function BloomShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const welcome = pathname.startsWith("/welcome");
-  const isPublic = welcome || pathname.startsWith("/claim");
+  const landing = pathname === "/";
+  const claim = pathname.startsWith("/claim");
+  const appRoute = !landing && !claim;
   const chat = pathname.startsWith("/chat");
+  const unlocked = useWalletGate(appRoute);
   return (
     <MotionConfig reducedMotion="user">
       {/* the landing page renders its own transparent-over-hero navigation */}
-      {welcome ? null : isPublic ? <PublicTopBar welcome={false} /> : <AppTopBar />}
-      <main className={cn("w-full flex-1", welcome ? "" : cn("mx-auto max-w-[1200px] pt-8 sm:pt-12", PAGE_X))}>{children}</main>
-      {!chat && <Footer withTabs={!isPublic} />}
-      {!isPublic && <BottomTabs />}
+      {landing ? null : claim ? <PublicTopBar /> : <AppTopBar />}
+      <main className={cn("w-full flex-1", landing ? "" : cn("mx-auto max-w-[1200px] pt-8 sm:pt-12", PAGE_X))}>
+        {appRoute && !unlocked ? <GateLoading /> : children}
+      </main>
+      {!chat && <Footer withTabs={appRoute} />}
+      {appRoute && <BottomTabs />}
       <Toaster
         position="top-center"
         toastOptions={{
