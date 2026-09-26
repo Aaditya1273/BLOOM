@@ -33,8 +33,8 @@
 
 | | |
 | --- | --- |
-| **Live app** | _add the Vercel URL here_ |
-| **Demo video (2:24)** | _add the YouTube URL here_ |
+| **Live app** | [bloom-page.vercel.app](https://bloom-page.vercel.app/) |
+| **Demo video (2:24)** | [youtu.be/8crMpT9Bd8U](https://youtu.be/8crMpT9Bd8U) |
 | **Whitepaper (14 pages)** | [`docs/Bloom-Whitepaper.pdf`](docs/Bloom-Whitepaper.pdf) |
 | **Live API** | [`bloom-backend-x604.onrender.com/api/health`](https://bloom-backend-x604.onrender.com/api/health) |
 | **Stylus risk engine** | [`0xc464…b124` on the explorer](https://explorer.testnet.chain.robinhood.com/address/0xc464c03bfe7efa388457b8b392454b99fa18b124) |
@@ -422,7 +422,7 @@ Canonical mainnet dependencies Bloom is configured for (mainnet not deployed; th
 
 ## 11. Getting started
 
-**Use the live testnet app.** Open the app, press **Try Bloom**, connect a wallet with a little Robinhood Chain testnet
+**Use the live testnet app.** Open [bloom-page.vercel.app](https://bloom-page.vercel.app/), press **Try Bloom**, connect a wallet with a little Robinhood Chain testnet
 ETH, and sign the one-time EIP-712 sign-in message (no gas). Then: *Get test USDG → Save $100 → "Save $500 for my
 laptop." → "Send Sarah $5 of QQQ." → Risk*. The full checklist is in [docs/METAMASK_QA.md](docs/METAMASK_QA.md).
 
