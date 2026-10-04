@@ -58,7 +58,7 @@
   #v(0.04in)
   #text(size: 9.5pt, style: "italic")[Arbitrum Open House Singapore: Online Buildathon 2026]
   #v(0.03in)
-  #text(size: 9.5pt)[September 25, 2026 · Robinhood Chain Testnet (chain 46630) · Stylus engine #raw("0xc464…b124")]
+  #text(size: 9.5pt)[October 4, 2026 (rev. 2) · Robinhood Chain Testnet (chain 46630) · Stylus engine #raw("0xc464…b124")]
   #v(0.03in)
   #text(size: 9.5pt)[Source: #raw("github.com/Aaditya1273/BLOOM") · tag #raw("bloom-v2-rc1")]
 ]
@@ -84,7 +84,9 @@ component, and evaluate against the live deployment: two independent implementat
 on 43 shared specification vectors; 197 automated tests pass; the full demonstration passes 13/13 checks against
 the live testnet. We also report a result that contradicts the usual expectation: for this call-bound workload the
 Stylus engine costs *1.57×* the gas of its EVM twin to ingest a report and *1.95×* to evaluate risk, and we explain
-why. Every number in this paper was measured.
+why. Revision 2 adds a 24/5 market-session guard that closes the _weekend free option_: while the
+underlying market is shut, borrowing, liquidation and agent trades pause onchain, where live lenders keep all three
+open on a frozen price. Every number in this paper was measured.
 ]
 
 #v(0.1in)
@@ -333,6 +335,30 @@ its event; no one can change the inputs through it.
 The reporter derives each report from the Robinhood API's quote endpoint (reference price) and asset status. On
 testnet it also writes the live quote into a mock price feed before reporting, so that the whole path, from the API
 to the reporter, the signature, the transaction and the Stylus engine, runs on real data even though the tokens are mocks.
+
+== Market session: closing the weekend free option <sec-session>
+
+US exchanges trade about 32.5 of the week's 168 hours, so a stock token spends roughly 81% of the week without a live
+primary-market price [11]. Production lenders already face this window. Since September 25, 2026, Aave's Base market
+accepts seven stock tokens as USDC collateral, with an oracle that freezes from Friday 8 PM to Sunday 8 PM ET while
+deposits, borrowing and liquidations stay open and USDC lenders absorb any shortfall [12]; Kamino instead bounds the
+weekend price with a band [13]. A frozen mark is a free option: when news moves the token on 24/7 venues on a Saturday,
+anyone can buy it cheaply, borrow against Friday's price and walk away. Marks produced during the closed window are
+endogenous and are validated only at the cash reopen [14], so the first post-gap prints are also where liquidations are
+least anchored.
+
+Bloom treats the closed session as a halt. Stock tokens trade 24/5: the reporter computes, from the America/New_York
+wall clock (so daylight saving is handled), whether the current session day, which runs from 8 PM ET to 8 PM ET, is a
+weekend or an NYSE full holiday, and while it is, signs `halted = true`. It keeps signing a halt for a reopen grace
+window (30 minutes by default) after any closure. The deployed engine needs no change: by the lattice of
+@sec-lattice the asset leaves #N, its max LTV becomes 0, borrowing and liquidation both pause, and because the
+agent's authorization requires #N (@sec-agent), every agent stock trade reverts onchain. Repayment remains open. The
+API distinguishes a session halt from an exchange halt so that users see "Market closed, reopens Sun 8:00 PM ET"
+rather than a trading-halt warning. In short: _the agent cannot trade a stock the market cannot trade._
+
+The guard is verified by a unit test covering the Friday close, the Sunday reopen and its grace window under both EDT and EST,
+the overnight weekday session, and Thanksgiving with its eve. Live on testnet on Sunday, October 4, 2026, all four
+assets reported #HL with borrowing and liquidation disabled and the session reported as closed until 8 PM ET.
 
 // ─────────────── 6 ───────────────
 = Consensus-Enforced Agent Authority <sec-agent>
@@ -644,6 +670,9 @@ Stated plainly, in decreasing order of weight.
   sign a false "all clear". The latter is bounded, not prevented: the price must still be fresh, valid and within the
   deviation bound of the reporter's own reference, the token must not be paused, and the sequencer must be up. A k-of-n
   reporter quorum is future work.
++ *The market session is reported, not computed onchain.* Closed sessions and the reopen grace are signed as a halt
+  by the reporter (@sec-session), so they inherit the single-reporter assumption above; the holiday calendar is a
+  hard-coded 2026–2027 NYSE list. A dedicated #sc("market_closed") engine state with an onchain calendar is future work.
 + *Not audited.* This is a testnet release candidate.
 + *Testnet assets are mocks.* USDG, the four stock tokens and their feeds are testnet mocks relaying live Robinhood API
   quotes; the risk engine and all enforcement contracts are real. Robinhood Chain Testnet has no canonical USDG, Stock
@@ -673,7 +702,14 @@ a delegated key may do; Bloom's contribution is to couple that scope to a live r
 plain-English goal. *Agent guardrails.* Content guardrails govern conversations; runtime firewalls such as Vigil
 govern tool calls with deterministic-first pipelines in the application process. Bloom moves the enforcement point for
 financial side effects from the process to consensus, so it survives the compromise of the process itself.
-*Arbitrum Stylus* enables Rust contracts alongside the EVM; our measurement (@tab-gas) is one data point on where its
+*Policy-attested agent execution.* PACE [15] verifies typed agent intents deterministically and records a policy
+decision onchain, and reports that policy-valid-but-harmful transactions still pass and that an approval made at one
+market state may execute at another; authority–inference separation [16] likewise enforces a static policy. Bloom's
+authorization adds the live market state of the asset at execution time, which is exactly that gap. *Halt-aware
+lending.* Haltgate [17] gates a lending market on the issuer's corporate-action schedule and the oracle pause flag,
+without agents or a signed reference. *Closed-window pricing.* Studies of 24/7 equity perpetuals [14] show closed-window
+marks sit tens of basis points from the last cash close and are only validated at the reopen, which motivates
+@sec-session. *Arbitrum Stylus* enables Rust contracts alongside the EVM; our measurement (@tab-gas) is one data point on where its
 cost model favours WASM and where it does not.
 
 // ─────────────── 14 ───────────────
@@ -683,6 +719,7 @@ A k-of-n reporter quorum with independent data sources; a guardian-controlled ag
 revocation in `BloomPolicy`; closing the Stylus cost gap by batching the engine's oracle reads (one cross-VM call per
 dependency per block) and by moving the vector-checked classifier into a pure Stylus library called from EVM
 consumers; reproducible Stylus source verification; an external audit; ERC-1271 sign-in for smart-contract wallets;
+a dedicated onchain #sc("market_closed") state with an onchain holiday calendar and session-dependent haircuts;
 an interest-rate model and the USDG/USD feed; and a mainnet deployment against canonical Stock Tokens and Chainlink
 stock feeds, which the gated deployment script already supports behind its cost limit.
 
@@ -714,6 +751,13 @@ defects the documentation did not predict and a Stylus measurement that contradi
   [OpenZeppelin. _Contracts 5.x_: ERC-4626, AccessControl, Ownable2Step, ECDSA, ReentrancyGuard. openzeppelin.com.],
   [Project Vigil. _A Deterministic-First Runtime Firewall for Autonomous AI Agents_. github.com/Aaditya1273/Vigil, 2026.],
   [Project Bloom. _Source, deployment manifests, test vectors and benchmark_. github.com/Aaditya1273/BLOOM, 2026.],
+  [crypto.news. _Tokenized stocks face 24/7 pricing gap, RedStone COO says_. September 18, 2026.],
+  [TechFlow. _Aave tokenized-stock lending and the weekend pricing gap_. techflowpost.com, September 2026.],
+  [The Defiant. _Kamino becomes first major DeFi lender to accept tokenized stocks as collateral_. 2026.],
+  [Seo et al. _When Cross-Venue Agreement Is Not Price Discovery_. arXiv:2608.09188, 2026.],
+  [Karanjai et al. _PACE: Policy-Attested Agent Execution_. arXiv:2608.17220, 2026.],
+  [Gong et al. _Authority–Inference Separation for Autonomous Agents_. arXiv:2608.30519, 2026.],
+  [Len3hq. _Haltgate: a halt-aware lending market for tokenized US equities_. github.com/Len3hq/Haltgate, 2026.],
 )
 
 #v(0.8em)
