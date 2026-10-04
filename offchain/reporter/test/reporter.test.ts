@@ -5,7 +5,7 @@ import { Wallet } from "ethers";
 import { AssetsResponse, PricesResponse } from "../src/api.ts";
 import {
   clampObservedAt, corporateActionPaused, nextNonce, parseDecimal, referencePriceOf, reportDigest,
-  signMarketReport, verifyCanonical, type MarketReport,
+  signMarketReport, verifyCanonical, marketSession, type MarketReport,
 } from "../src/core.ts";
 
 const fx = (f: string) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), "utf8"));
@@ -85,4 +85,20 @@ test("corporate action pause: pending multiplier within window / processing acti
   const div = { type: "CORPORATE_ACTION_TYPE_CASH_DIVIDEND", status: "CORPORATE_ACTION_STATUS_IN_PROGRESS", tokenSymbol: "QQQ" };
   assert.equal(corporateActionPaused("QQQ", qqq, [{ ...div, processDate: { year: 2026, month: 10, day: 8 } }], now, 86400), false);
   assert.equal(corporateActionPaused("QQQ", qqq, [{ ...div, processDate: { year: 2026, month: 9, day: 25 } }], now, 86400), true);
+});
+
+test("market session: 24/5 window, holidays, reopen grace (DST-safe)", () => {
+  const at = (iso: string) => marketSession(Date.parse(iso)).state;
+  assert.equal(at("2026-10-02T23:59:00Z"), "OPEN");       // Fri 7:59 PM EDT
+  assert.equal(at("2026-10-03T00:01:00Z"), "CLOSED");     // Fri 8:01 PM EDT
+  assert.equal(at("2026-10-04T15:00:00Z"), "CLOSED");     // Sun 11 AM EDT
+  assert.equal(at("2026-10-05T00:10:00Z"), "REOPENING");  // Sun 8:10 PM EDT
+  assert.equal(at("2026-10-05T00:31:00Z"), "OPEN");       // Sun 8:31 PM EDT
+  assert.equal(at("2026-10-07T03:00:00Z"), "OPEN");       // Tue 11 PM EDT (overnight session)
+  assert.equal(at("2026-11-26T15:00:00Z"), "CLOSED");     // Thanksgiving (EST)
+  assert.equal(at("2026-11-26T01:05:00Z"), "CLOSED");     // Wed 8:05 PM EST, eve of Thanksgiving
+  assert.equal(at("2026-11-27T01:10:00Z"), "REOPENING");  // Thu 8:10 PM EST
+  assert.equal(at("2026-12-07T01:10:00Z"), "REOPENING");  // Sun 8:10 PM EST (winter offset)
+  assert.equal(marketSession(Date.parse("2026-10-04T15:00:00Z")).reopensAt, "Sun 10-04 8:00 PM ET");
+  assert.equal(marketSession(Date.parse("2026-11-26T15:00:00Z")).reopensAt, "Thu 11-26 8:00 PM ET");
 });

@@ -102,6 +102,21 @@ the underlying market can be:
 A lending market that treats a fresh price as permission to lend keeps lending and liquidating straight through all of
 it. **Lending against stock tokens today is flying blind.**
 
+### The weekend free option
+
+US exchanges trade about 32.5 of the week's 168 hours, so a stock token spends roughly 81% of the week with no live
+reference price ([RedStone COO via crypto.news](https://crypto.news/tokenized-stocks-face-24-7-pricing-gap-redstone-coo/)).
+Since September 25, 2026, Aave's Base market accepts seven stock tokens as USDC collateral. Its oracle freezes from Friday
+8 PM to Sunday 8 PM ET while deposits, borrowing and liquidations stay open, and USDC lenders absorb any shortfall
+([TechFlow](https://www.techflowpost.com/en-US/article/34260)). Bad news on a Saturday moves the token on 24/7 venues;
+the lending oracle still shows Friday's price. Anyone can buy the cheap token, borrow against Friday's price, and walk
+away. AI agents act through that window too.
+
+**Bloom closes it.** Its reporter treats the closed 24/5 session (weekends and NYSE holidays) as a signed halt, and
+keeps the guard on for a 30-minute reopen grace window. The onchain engine then sets max LTV to 0, pauses borrowing
+*and* liquidations, and the agent policy refuses every stock trade. Repayment stays open. *Your agent can't trade a
+stock the market can't trade.*
+
 ### AI agents are getting wallets, guarded by a prompt
 
 Agents that turn "save for my laptop" into transactions are arriving now. In most systems the only thing between the
@@ -150,6 +165,7 @@ answer per asset: risk state, max LTV, whether borrowing and liquidation are all
 | | Price-feed lending | Prompt-guarded agents | **Bloom** |
 | --- | --- | --- | --- |
 | Sees trading halts | No | No | **Yes**: signed market reports |
+| Weekend / holiday window | Frozen price, borrowing and liquidations open | No | **Paused**: closed session signed as a halt, plus 30-min reopen grace |
 | Handles splits and corporate actions | No | No | **Yes**: oracle pause, report flag and multiplier checks |
 | Knows a price is stale | Heartbeat only | No | **Yes**: feed heartbeat *and* report age |
 | Blocks liquidations on bad data | No | n/a | **Yes**: protected mode reverts liquidation if any collateral isn't NORMAL |
@@ -494,6 +510,10 @@ Known limitations, stated plainly:
 - **Testnet assets are mocks.** USDG, the four Stock Tokens and their feeds are testnet mocks relaying live Robinhood API
   quotes; the risk engine and every enforcement contract are real. Robinhood Chain testnet has no canonical USDG,
   Stock Tokens or Chainlink stock feeds.
+- **The market session is signed as a halt, not a separate onchain state.** Weekends, NYSE holidays (2026–2027 list,
+  hard-coded) and the reopen grace are computed by the reporter and reported with `halted = true`, so the deployed
+  engine enforces them unchanged; the API labels them "Market closed". A dedicated `MARKET_CLOSED` engine state is next.
+  `MARKET_SESSION_GUARD=false` turns the session guard off.
 - **A single reporter key** is trusted for market status (bounded by the price, freshness, deviation, token and
   sequencer checks). A k-of-n quorum is next.
 - **No admin-side agent revocation.** One testnet goal (#1), created before key rotation by a throwaway wallet, still

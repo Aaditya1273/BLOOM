@@ -11,8 +11,8 @@ import { withLock } from "../../txlock.ts";
 import { makeLogger, type Logger } from "../../log.ts";
 import { fetchAssets, fetchCorporateActions, fetchQuote, type ApiAsset, type CorpAction } from "./api.ts";
 import {
-  clampObservedAt, corporateActionPaused, isoToSec, nextNonce, parseDecimal, referencePriceOf,
-  signMarketReport, verifyCanonical, E18, type MarketReport,
+  clampObservedAt, corporateActionPaused, isoToSec, marketSession, nextNonce, parseDecimal, referencePriceOf,
+  reopenGraceMin, sessionGuardEnabled, signMarketReport, verifyCanonical, E18, type MarketReport,
 } from "./core.ts";
 
 installFetchTransport(FetchRequest);
@@ -20,7 +20,7 @@ installFetchTransport(FetchRequest);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const abi = (name: string) => JSON.parse(readFileSync(join(ROOT, "offchain", "abi", `${name}.json`), "utf8"));
 
-export const SCENARIOS = ["HALT", "STALE", "DEVIATION", "CORP_ACTION", "SEQUENCER_DOWN", "RESET"] as const;
+export const SCENARIOS = ["HALT", "MARKET_CLOSED", "STALE", "DEVIATION", "CORP_ACTION", "SEQUENCER_DOWN", "RESET"] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 export type Mode = "production" | "testnet-mock";
 
@@ -63,11 +63,14 @@ export function createReporter(opts: ReporterOptions) {
   const stocks = Object.entries(dep.assets).filter(([, a]) => a.kind === "STOCK_TOKEN").map(([s]) => s);
 
   // demo scenario state (testnet only)
-  const active = new Map<string, Scenario>(); // symbol -> HALT | STALE | DEVIATION | CORP_ACTION
+  const active = new Map<string, Scenario>(); // symbol -> HALT | MARKET_CLOSED | STALE | DEVIATION | CORP_ACTION
   const devRef = new Map<string, bigint>(); // DEVIATION: reference price held while the feed is moved
   const lastPrice = new Map<string, bigint>(); // 1e18, last good price (API unreachable => keep it)
   let sequencerDown = false;
   let timer: NodeJS.Timeout | null = null;
+  const session = () => marketSession(Date.now(), reopenGraceMin());
+  /** Closed session or reopen grace => report halted (no live reference price; liquidations must not fire). */
+  const sessionClosed = () => sessionGuardEnabled() && session().state !== "OPEN";
   let running: Promise<unknown> = Promise.resolve();
 
   async function send(signer: Wallet, label: string, fn: () => Promise<any>): Promise<string> {
@@ -141,7 +144,7 @@ export function createReporter(opts: ReporterOptions) {
       ref = w.written;
     }
     const uiMultiplier = BigInt(await tokenOf(sym).uiMultiplier());
-    hashes.push(await submit(sym, { halted: sc === "HALT", corporateActionPaused: false, uiMultiplier, referencePrice: ref }, generatedAt));
+    hashes.push(await submit(sym, { halted: sc === "HALT" || sc === "MARKET_CLOSED" || sessionClosed(), corporateActionPaused: false, uiMultiplier, referencePrice: ref }, generatedAt));
     return hashes;
   }
 
@@ -161,7 +164,7 @@ export function createReporter(opts: ReporterOptions) {
         const onchain = BigInt(await new Contract(dep.assets[sym].token, abi("MockStockToken"), provider).uiMultiplier());
         if (onchain !== uiMultiplier) log.warn("multiplier differs from onchain (engine will pause)", { symbol: sym, api: uiMultiplier, onchain });
         const paused = corporateActionPaused(sym, a, actions as CorpAction[], Math.floor(Date.now() / 1000), windowSec);
-        hashes.push(await submit(sym, { halted: q.isTradingHalt, corporateActionPaused: paused, uiMultiplier,
+        hashes.push(await submit(sym, { halted: q.isTradingHalt || sessionClosed(), corporateActionPaused: paused, uiMultiplier,
           referencePrice: referencePriceOf(q, a.currentMultiplier) }, isoToSec(q.generatedAt)));
       } catch (e) {
         log.error("report failed", { symbol: sym, error: e }); // no report => engine goes STALE (fail closed)
@@ -195,8 +198,9 @@ export function createReporter(opts: ReporterOptions) {
       const hashes: string[] = [];
       const seq = new Contract(dep.contracts.MockSequencerUptimeFeed, abi("MockSequencerUptimeFeed"), feedAdmin);
       switch (scenario) {
-        case "HALT": {
-          active.set(symbol, "HALT");
+        case "HALT":
+        case "MARKET_CLOSED": {
+          active.set(symbol, scenario);
           const [, answer] = await feedOf(symbol).latestRoundData();
           const ref = BigInt(answer) * (await feedScale(symbol));
           const uiMultiplier = BigInt(await tokenOf(symbol).uiMultiplier());
@@ -219,7 +223,7 @@ export function createReporter(opts: ReporterOptions) {
           devRef.set(symbol, w.written);
           active.set(symbol, "DEVIATION");
           const uiMultiplier = BigInt(await tokenOf(symbol).uiMultiplier());
-          hashes.push(await submit(symbol, { halted: false, corporateActionPaused: false, uiMultiplier, referencePrice: w.written }, null));
+          hashes.push(await submit(symbol, { halted: sessionClosed(), corporateActionPaused: false, uiMultiplier, referencePrice: w.written }, null));
           hashes.push((await writeFeed(symbol, (w.written * 108n) / 100n)).txHash);
           hashes.push(await send(reporter, `refresh ${symbol}`, () => engine.refresh(dep.assets[symbol].token)));
           break;
@@ -276,6 +280,7 @@ export function createReporter(opts: ReporterOptions) {
     simulate,
     start,
     stop,
+    session: () => ({ ...session(), guard: sessionGuardEnabled() }),
     activeScenarios: () => ({ ...Object.fromEntries(active), ...(sequencerDown ? { SEQUENCER: "SEQUENCER_DOWN" } : {}) }),
     idle: () => running,
     E18,

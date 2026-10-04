@@ -10,6 +10,7 @@ import { StatusPill } from "./status-pill";
 
 const SCENARIOS: { s: Scenario; label: string }[] = [
   { s: "HALT", label: "Simulate halt" },
+  { s: "MARKET_CLOSED", label: "Simulate market closed" },
   { s: "STALE", label: "Simulate stale price" },
   { s: "DEVIATION", label: "Simulate deviation" },
   { s: "CORP_ACTION", label: "Simulate corporate action" },

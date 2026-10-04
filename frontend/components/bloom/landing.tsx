@@ -291,6 +291,7 @@ const MARQUEE = [
   "Policy checked",
   "Risk checked",
   "Halt-aware",
+  "Weekend-safe",
   "Stylus risk engine",
   "Claim links",
   "Goals on autopilot",
@@ -431,10 +432,11 @@ function HowItWorks() {
 
 /* ───────────────────────────── risk engine ───────────────────────────── */
 
-const CYCLE: { state: RiskStateName; symbol: string; reason: string; halt: boolean; borrowing: boolean; ltv: string; oracle: string }[] = [
+const CYCLE: { state: RiskStateName; label?: string; symbol: string; reason: string; halt: boolean; borrowing: boolean; ltv: string; oracle: string }[] = [
   { state: "NORMAL", symbol: "AAPL", reason: "Within Bloom's risk policy.", halt: false, borrowing: true, ltv: "60%", oracle: "Fresh · 8s" },
   { state: "HALTED", symbol: "AAPL", reason: "Equity market trading halt detected.", halt: true, borrowing: false, ltv: "0%", oracle: "Fresh · 6s" },
   { state: "NORMAL", symbol: "AAPL", reason: "Trading resumed. Back within policy.", halt: false, borrowing: true, ltv: "60%", oracle: "Fresh · 4s" },
+  { state: "HALTED", label: "Market closed", symbol: "NVDA", reason: "Weekend: no live reference price. Borrowing, liquidations and the agent pause until Sunday 8 PM ET.", halt: false, borrowing: false, ltv: "0%", oracle: "Frozen · Fri close" },
   { state: "STALE", symbol: "NVDA", reason: "Oracle price is older than its heartbeat.", halt: false, borrowing: false, ltv: "0%", oracle: "Stale · 1h 2m" },
 ];
 
@@ -479,7 +481,7 @@ function RiskCycle() {
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={i} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.35, ease: EASE }}>
           <p className="mt-1 text-2xl font-semibold tracking-[-0.02em]">{s.symbol}</p>
-          <RiskState state={s.state} reason={s.reason} size="sm" className="mt-4" />
+          <RiskState state={s.state} label={s.label} reason={s.reason} size="sm" className="mt-4" />
         </motion.div>
       </AnimatePresence>
       <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -514,8 +516,9 @@ function RiskSection() {
               Bloom checks the market before your money moves.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-muted">
-              Markets close, trading halts, companies split. Bloom reads those signals alongside the price oracle and pauses borrowing and agent
-              actions when an asset isn&apos;t in a normal state.
+              US stock markets are open about 32 of the week&apos;s 168 hours. Over the weekend, other lenders keep borrowing and liquidations
+              open on Friday&apos;s frozen price. Bloom doesn&apos;t: when the market is closed, halted or a company splits, borrowing,
+              liquidations and agent trades pause onchain. Your agent can&apos;t trade a stock the market can&apos;t trade.
             </p>
           </Reveal>
           <Reveal delay={0.1} className="mt-8">

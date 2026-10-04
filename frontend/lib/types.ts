@@ -73,15 +73,25 @@ export interface RiskAsset {
   liquidationAllowed: boolean;
   maxLtvBps: number;
   reason: string;
+  /** Set when HALTED comes from the 24/5 market session (closed / reopen grace), not an exchange halt. */
+  marketClosed?: "CLOSED" | "REOPENING" | null;
   lastReport: { observedAt: number; nonce: number | string } | null;
 }
 
 export interface RiskSnapshot {
   sequencer: { up: boolean; required: boolean; sinceSec: number };
+  session?: MarketSession;
   assets: RiskAsset[];
 }
 
-export type Scenario = "HALT" | "STALE" | "DEVIATION" | "CORP_ACTION" | "SEQUENCER_DOWN" | "RESET";
+export interface MarketSession {
+  state: "OPEN" | "CLOSED" | "REOPENING";
+  reason: string;
+  reopensAt: string | null;
+  guard: boolean;
+}
+
+export type Scenario = "HALT" | "MARKET_CLOSED" | "STALE" | "DEVIATION" | "CORP_ACTION" | "SEQUENCER_DOWN" | "RESET";
 
 export interface SimulateResult {
   txHashes: string[];

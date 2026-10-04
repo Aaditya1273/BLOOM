@@ -1,6 +1,12 @@
 // Risk engine reads + plain-English explanations.
 import { Contract } from "ethers";
 import { ABI, assetBySymbol, c, fail, fmt, provider, stocks, usd, type AssetInfo } from "./ctx.ts";
+import { marketSession, reopenGraceMin, sessionGuardEnabled } from "../../offchain/reporter/src/core.ts";
+
+/** 24/5 market session. While not OPEN the reporter signs halted=true, so the onchain engine reports HALTED. */
+export const session = () => ({ ...marketSession(Date.now(), reopenGraceMin()), guard: sessionGuardEnabled() });
+/** Engine says HALTED and the halt comes from the closed session (not an exchange halt): explain it as such. */
+const sessionHalt = (halted: boolean) => { const s = session(); return halted && s.guard && s.state !== "OPEN" ? s : null; };
 
 export const STATE_NAMES = ["NORMAL", "HALTED", "STALE", "DEVIATION", "CORP_ACTION_PAUSED", "SEQUENCER_DOWN", "INVALID_PRICE", "UNSUPPORTED"] as const;
 export type StateName = (typeof STATE_NAMES)[number];
@@ -52,6 +58,7 @@ export async function riskOf(a: AssetInfo) {
   const ref = BigInt(report.referencePrice);
   const diff = feedPrice > ref ? feedPrice - ref : ref - feedPrice;
   const hasReport = BigInt(report.nonce) !== 0n;
+  const closed = stateName === "HALTED" ? sessionHalt(Boolean(report.halted)) : null;
   return {
     symbol: a.symbol,
     token: a.token,
@@ -70,7 +77,9 @@ export async function riskOf(a: AssetInfo) {
     borrowingAllowed: Boolean(risk.borrowingAllowed),
     liquidationAllowed: Boolean(risk.liquidationAllowed),
     maxLtvBps: Number(risk.maxLtvBps),
-    reason: state === 0 ? STATE_REASON.NORMAL : `${STATE_REASON[stateName]} Borrowing paused because the asset is currently outside Bloom's risk policy.`,
+    marketClosed: closed ? closed.state : null,
+    reason: state === 0 ? STATE_REASON.NORMAL : closed
+      ? `${closed.reason}${closed.reopensAt ? ` Reopens ${closed.reopensAt}.` : ""} Borrowing, liquidations and agent actions are paused onchain; repayment stays open.` : `${STATE_REASON[stateName]} Borrowing paused because the asset is currently outside Bloom's risk policy.`,
     lastReport: hasReport ? { observedAt: Number(report.observedAt), nonce: Number(report.nonce) } : null,
   };
 }
@@ -81,7 +90,7 @@ export type AssetRisk = Awaited<ReturnType<typeof riskOf>>;
 let riskCache: { at: number; value: Promise<Awaited<ReturnType<typeof readRiskAll>>> } | null = null;
 async function readRiskAll() {
   const [sequencer, list] = await Promise.all([sequencerStatus(), Promise.all(stocks.map(riskOf))]);
-  return { sequencer, assets: list.map(({ price1e18, priceTrusted, ...r }) => r) };
+  return { sequencer, session: session(), assets: list.map(({ price1e18, priceTrusted, ...r }) => r) };
 }
 export function riskAll() {
   if (riskCache && Date.now() - riskCache.at < 3_000) return riskCache.value;
@@ -103,6 +112,7 @@ export async function borrowCheck(symbol: string) {
   const r = await riskOf(stockBySymbol(symbol));
   const message = r.borrowingAllowed
     ? `Borrowing against ${r.symbol} is enabled, up to ${r.maxLtvBps / 100}% of its value.`
+    : r.marketClosed ? `Borrowing against ${r.symbol} is paused: ${r.reason}`
     : `Borrowing against ${r.symbol} is paused: ${STATE_REASON[r.stateName]} Bloom sets max LTV to 0 and pauses liquidations until the asset is back to NORMAL.`;
   return { borrowingAllowed: r.borrowingAllowed, maxLtvBps: r.maxLtvBps, state: r.state, stateName: r.stateName, message };
 }

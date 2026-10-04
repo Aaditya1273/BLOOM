@@ -259,7 +259,7 @@ export function createApp(reporter: Reporter | null) {
   });
   app.post("/api/risk/simulate", admin, rl.admin, async (req, res) => {
     requireTestnet("Risk simulation");
-    const b = parse(z.object({ symbol: sym, scenario: z.enum(["HALT", "STALE", "DEVIATION", "CORP_ACTION", "SEQUENCER_DOWN", "RESET"]) }), req.body);
+    const b = parse(z.object({ symbol: sym, scenario: z.enum(["HALT", "MARKET_CLOSED", "STALE", "DEVIATION", "CORP_ACTION", "SEQUENCER_DOWN", "RESET"]) }), req.body);
     const a = stockBySymbol(b.symbol);
     if (!reporter) fail(503, "INTERNAL", "Reporter is not configured (REPORTER_PRIVATE_KEY / MOCK_ORACLE_PRIVATE_KEY).");
     let txHashes: string[];

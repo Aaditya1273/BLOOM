@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
-import type { RiskAsset, RiskSnapshot } from "@/lib/types";
+import type { MarketSession, RiskAsset, RiskSnapshot } from "@/lib/types";
 import { MAINNET_CHAIN_ID, useConfig, useQuery } from "@/hooks/use-api";
 import { useAuth } from "@/hooks/use-auth";
 import { age, pct, RISK_LABEL, usd } from "@/lib/format";
@@ -21,7 +21,31 @@ function sequencerText(s: RiskSnapshot["sequencer"]) {
   return s.up ? "Available" : "Down";
 }
 
-function FeaturedAsset({ a, seq }: { a: RiskAsset; seq: RiskSnapshot["sequencer"] }) {
+const closedLabel = (a: RiskAsset) => (a.marketClosed === "REOPENING" ? "Reopening" : a.marketClosed ? "Market closed" : undefined);
+
+function sessionText(s?: MarketSession) {
+  if (!s || !s.guard) return "Not enforced";
+  return s.state === "OPEN" ? "Open (24/5)" : s.state === "REOPENING" ? "Reopen grace" : "Closed";
+}
+
+/** The weekend / holiday window: no live reference price, so Bloom pauses borrowing, liquidations and the agent. */
+function SessionBanner({ s }: { s?: MarketSession }) {
+  if (!s || !s.guard || s.state === "OPEN") return null;
+  return (
+    <BloomCard className="mb-6 border-danger/30 bg-danger-soft" aria-live="polite">
+      <p className="font-semibold text-danger-text">
+        {s.state === "CLOSED" ? "Market closed" : "Market reopening"}
+        {s.reopensAt ? ` · reopens ${s.reopensAt}` : ""}
+      </p>
+      <p className="mt-1 text-sm text-ink/75 text-pretty">
+        {s.reason} Lenders elsewhere keep borrowing and liquidations open on a frozen price through this window. Bloom pauses
+        borrowing, liquidations and every agent trade onchain until the market reopens. Repayment stays open.
+      </p>
+    </BloomCard>
+  );
+}
+
+function FeaturedAsset({ a, seq, session }: { a: RiskAsset; seq: RiskSnapshot["sequencer"]; session?: MarketSession }) {
   const stale = a.stateName === "STALE";
   return (
     <BloomCard as="article" className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-12" aria-label={`${a.symbol} risk`}>
@@ -31,11 +55,12 @@ function FeaturedAsset({ a, seq }: { a: RiskAsset; seq: RiskSnapshot["sequencer"
           <h2 className="text-3xl font-semibold tracking-[-0.03em]">{a.symbol}</h2>
           <p className="display text-3xl text-ink/80">{usd(a.priceUsd)}</p>
         </div>
-        <RiskState state={a.stateName} reason={a.reason} className="mt-6" />
+        <RiskState state={a.stateName} reason={a.reason} label={closedLabel(a)} className="mt-6" />
       </div>
       <dl className="grid grid-cols-2 gap-x-6 divide-line sm:grid-cols-3 lg:grid-cols-2 [&>div]:border-b [&>div]:border-line">
         <RiskMetric label="Oracle" value={stale ? "Stale" : "Fresh"} bad={stale} hint={`Updated ${age(a.oracleAgeSec)} ago`} />
-        <RiskMetric label="Trading halt" value={a.halted ? "Yes" : "No"} bad={a.halted} />
+        <RiskMetric label="Market session" value={sessionText(session)} bad={!!session?.guard && session.state !== "OPEN"} />
+        <RiskMetric label="Trading halt" value={a.halted && !a.marketClosed ? "Yes" : "No"} bad={a.halted && !a.marketClosed} />
         <RiskMetric label="Corporate action" value={a.corporateActionPaused ? "Yes" : "No"} bad={a.corporateActionPaused} />
         <RiskMetric label="Deviation" value={pct(a.deviationBps, 2)} bad={a.stateName === "DEVIATION"} hint={`Reference ${usd(a.referencePriceUsd)}`} />
         <RiskMetric label="Sequencer" value={sequencerText(seq)} bad={seq.required && !seq.up} />
@@ -56,7 +81,7 @@ function AssetLine({ a }: { a: RiskAsset }) {
         <p className="tabular text-sm text-muted">{usd(a.priceUsd)}</p>
       </div>
       <div className="justify-self-end sm:justify-self-start">
-        <StatusPill tone={normal ? "ok" : "bad"}>{normal ? "Normal" : RISK_LABEL[a.stateName]}</StatusPill>
+        <StatusPill tone={normal ? "ok" : "bad"}>{normal ? "Normal" : closedLabel(a) ?? RISK_LABEL[a.stateName]}</StatusPill>
       </div>
       <p className={cn("text-sm", !a.borrowingAllowed ? "text-danger-text" : "text-muted")}>
         Borrowing {a.borrowingAllowed ? "enabled" : "disabled"}
@@ -77,7 +102,7 @@ function Arrow() {
 }
 
 function HowItWorks({ engine }: { engine?: string }) {
-  const inputs = ["Oracle price", "Trading halts", "Corporate actions", "Price freshness", "Deviation", "Sequencer uptime"];
+  const inputs = ["Oracle price", "Market session (24/5)", "Trading halts", "Corporate actions", "Price freshness", "Deviation", "Sequencer uptime"];
   return (
     <section aria-labelledby="how-heading" className="mt-16">
       <SectionHeader id="how-heading" title="How it works" />
@@ -143,6 +168,8 @@ export default function RiskPage() {
         <DemoControls symbols={assets.map((a) => a.symbol)} onDone={risk.reload} />
       )}
 
+      <SessionBanner s={risk.data?.session} />
+
       {risk.loading ? (
         <div className="space-y-4">
           <Skeleton className="h-80 rounded-card" />
@@ -150,7 +177,7 @@ export default function RiskPage() {
         </div>
       ) : featured && seq ? (
         <div className="space-y-6">
-          <FeaturedAsset a={featured} seq={seq} />
+          <FeaturedAsset a={featured} seq={seq} session={risk.data?.session} />
           {rest.length > 0 && (
             <BloomCard className="py-1 sm:py-1" delay={0.05} aria-label="Other assets">
               <ul className="divide-y divide-line">

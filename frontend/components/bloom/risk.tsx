@@ -12,7 +12,7 @@ import { EASE } from "./card";
  * The risk verdict. NORMAL is quiet green; every other state is red with a text
  * label and the backend's plain-English reason. Transitions smoothly between states.
  */
-export function RiskState({ state, reason, size = "lg", className }: { state: RiskStateName; reason?: string; size?: "lg" | "sm"; className?: string }) {
+export function RiskState({ state, reason, label, size = "lg", className }: { state: RiskStateName; reason?: string; label?: string; size?: "lg" | "sm"; className?: string }) {
   const normal = state === "NORMAL";
   const Icon = normal ? ShieldCheck : ShieldAlert;
   return (
@@ -39,7 +39,7 @@ export function RiskState({ state, reason, size = "lg", className }: { state: Ri
                 normal ? "text-success-text" : "text-danger-text",
               )}
             >
-              {normal ? "Normal" : RISK_LABEL[state]}
+              {normal ? "Normal" : label ?? RISK_LABEL[state]}
             </p>
           </div>
           {reason && <p className={cn("mt-2 text-ink/75 text-pretty", size === "lg" ? "text-[15px]" : "text-sm")}>{reason}</p>}

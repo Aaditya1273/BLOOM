@@ -47,7 +47,9 @@ export async function explainReason(reason: string, symbol: string, account: str
   switch (reason) {
     case "ASSET_RISK_BLOCKED": {
       const a = assetBySymbol(symbol);
-      const stateName = a && a.kind === "STOCK_TOKEN" ? (await riskOf(a)).stateName : undefined;
+      const r = a && a.kind === "STOCK_TOKEN" ? await riskOf(a) : undefined;
+      const stateName = r?.stateName;
+      if (r?.marketClosed) return { message: `I didn't execute this because the ${symbol} market is closed: there is no live reference price, so Bloom's risk engine blocks agent trades onchain until it reopens.`, stateName };
       const adj = stateName && stateName !== "NORMAL" ? STATE_ADJ[stateName] : "blocked";
       return { message: `I didn't execute this action because ${symbol} entered a ${adj}-risk state.`, stateName };
     }
@@ -80,7 +82,7 @@ async function riskCheck(symbol: string) {
   const a = assetBySymbol(symbol);
   if (!a || a.kind !== "STOCK_TOKEN") return { ok: true, state: "NORMAL", message: `${symbol} is a stable asset.` };
   const r = await riskOf(a);
-  return { ok: r.state === 0, state: r.stateName, stateId: r.state, message: r.state === 0 ? `${symbol} is trading normally.` : `${symbol}: ${STATE_REASON[r.stateName]}` };
+  return { ok: r.state === 0, state: r.stateName, stateId: r.state, message: r.state === 0 ? `${symbol} is trading normally.` : `${symbol}: ${r.marketClosed ? r.reason : STATE_REASON[r.stateName]}` };
 }
 
 const enc = {
@@ -170,7 +172,7 @@ async function explainBorrow(account: string, symbol?: string) {
   let reply: string;
   if (!risk.sequencer.up) reply = "Borrowing is paused for every asset because the network sequencer is down or in its grace period.";
   else if (blocked.length === 0) reply = `Borrowing is enabled right now: ${list.map((a) => a.symbol).join(", ")} ${list.length === 1 ? "is" : "are"} NORMAL, with a max loan-to-value of ${list[0].maxLtvBps / 100}%.`;
-  else reply = `Borrowing is paused for ${blocked.map((a) => `${a.symbol} (${STATE_REASON[a.stateName as StateName]})`).join("; ")}. Bloom sets max LTV to 0 and pauses liquidations while an asset is outside its risk policy, so nobody is liquidated at an untrusted price.`;
+  else reply = `Borrowing is paused for ${blocked.map((a) => `${a.symbol} (${a.marketClosed ? "market closed" : STATE_REASON[a.stateName as StateName]})`).join("; ")}. Bloom sets max LTV to 0 and pauses liquidations while an asset is outside its risk policy, so nobody is liquidated at an untrusted price.`;
   if (!health.allowed) reply += " Your own borrowing is currently blocked because one of your collateral assets is outside NORMAL.";
   const first = blocked[0] ?? list[0];
   return { reply, card: { kind: "risk", asset: first?.symbol, riskCheck: { ok: blocked.length === 0 && risk.sequencer.up, state: first?.stateName, message: first?.reason } } };
@@ -182,7 +184,7 @@ async function explainRisk(account: string, symbol?: string) {
   const token = assetBySymbol(a.symbol)!;
   const [held, posted] = await Promise.all([erc20(token.token).balanceOf(account), c.vault.collateralOf(account, token.token)]) as [bigint, bigint];
   const parts = [
-    `${a.symbol} is ${a.stateName === "NORMAL" ? "in a NORMAL risk state" : `in ${a.stateName} state: ${STATE_REASON[a.stateName as StateName]}`}.`,
+    `${a.symbol} is ${a.stateName === "NORMAL" ? "in a NORMAL risk state" : `in ${a.stateName} state: ${a.marketClosed ? a.reason : STATE_REASON[a.stateName as StateName]}`}.`,
     `Oracle price $${a.priceUsd}${a.oracleAgeSec !== null ? `, updated ${a.oracleAgeSec}s ago` : ""}${a.deviationBps !== null ? `, ${(a.deviationBps / 100).toFixed(2)}% from the signed reference price` : ""}.`,
     a.borrowingAllowed ? `You could borrow up to ${a.maxLtvBps / 100}% of its value.` : "Borrowing against it is paused (max LTV 0) and liquidations are paused too.",
     posted > 0n ? `You have ${fmt(posted, 18, 6)} ${a.symbol} posted as collateral.` : held > 0n ? `You hold ${fmt(held, 18, 6)} ${a.symbol} but haven't posted it as collateral.` : `You don't hold any ${a.symbol} right now.`,
